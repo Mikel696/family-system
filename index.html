@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#0A0A14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Family System 💜</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+<!-- APP SHELL -->
+<div id="app">
+
+  <!-- SIDEBAR (desktop) -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">💜</span>
+      <div class="logo-text">
+        <span class="logo-title">Family System</span>
+        <span class="logo-sub">Hogar Financiero</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-section="dashboard" onclick="App.navigate('dashboard')">
+        <span class="nav-icon">🏠</span><span class="nav-label">Inicio</span>
+      </a>
+      <a class="nav-item" data-section="transactions" onclick="App.navigate('transactions')">
+        <span class="nav-icon">💸</span><span class="nav-label">Transacciones</span>
+      </a>
+      <a class="nav-item" data-section="savings" onclick="App.navigate('savings')">
+        <span class="nav-icon">🎯</span><span class="nav-label">Ahorros</span>
+      </a>
+      <a class="nav-item" data-section="debts" onclick="App.navigate('debts')">
+        <span class="nav-icon">💳</span><span class="nav-label">Deudas</span>
+      </a>
+      <a class="nav-item" data-section="budget" onclick="App.navigate('budget')">
+        <span class="nav-icon">📊</span><span class="nav-label">Presupuesto</span>
+      </a>
+      <a class="nav-item" data-section="notes" onclick="App.navigate('notes')">
+        <span class="nav-icon">📝</span><span class="nav-label">Notas</span>
+      </a>
+      <a class="nav-item" data-section="tasks" onclick="App.navigate('tasks')">
+        <span class="nav-icon">✅</span><span class="nav-label">Tareas</span>
+      </a>
+      <a class="nav-item" data-section="calendar" onclick="App.navigate('calendar')">
+        <span class="nav-icon">📅</span><span class="nav-label">Calendario</span>
+      </a>
+      <a class="nav-item" data-section="payments" onclick="App.navigate('payments')">
+        <span class="nav-icon">🏦</span><span class="nav-label">Pagos</span>
+      </a>
+      <a class="nav-item" data-section="reports" onclick="App.navigate('reports')">
+        <span class="nav-icon">📈</span><span class="nav-label">Reportes</span>
+      </a>
+      <a class="nav-item" data-section="settings" onclick="App.navigate('settings')">
+        <span class="nav-icon">⚙️</span><span class="nav-label">Ajustes</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-switcher">
+        <button class="user-btn active" data-user="karen" onclick="App.switchUser('karen')" title="Karen">
+          <span class="user-avatar">👩</span>
+          <span class="user-name">Karen</span>
+        </button>
+        <button class="user-btn" data-user="miguel" onclick="App.switchUser('miguel')" title="Miguel">
+          <span class="user-avatar">👨</span>
+          <span class="user-name">Miguel</span>
+        </button>
+        <button class="user-btn" data-user="shared" onclick="App.switchUser('shared')" title="Hogar">
+          <span class="user-avatar">🏠</span>
+          <span class="user-name">Hogar</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content">
+
+    <!-- TOP BAR -->
+    <header class="topbar">
+      <button class="menu-toggle" onclick="App.toggleSidebar()">☰</button>
+      <div class="topbar-title" id="pageTitle">Inicio</div>
+      <div class="topbar-actions">
+        <button class="btn-icon" onclick="App.toggleTheme()" title="Tema" id="themeBtn">🌙</button>
+        <div class="alert-bell-wrap">
+          <button class="btn-icon" onclick="Alerts.showPanel()" title="Alertas" id="alertBellBtn">🔔</button>
+          <span class="alert-badge" id="alertBadge" style="display:none">0</span>
+        </div>
+        <div class="drive-sync-pill" id="driveSyncPill" title="Google Drive Sync">
+          <span class="drive-dot" id="driveSyncDot"></span>
+          <span class="drive-label" id="driveSyncLabel">Drive</span>
+        </div>
+        <button class="btn-icon" onclick="App.showQuickAdd()" title="Agregar rápido">➕</button>
+        <div class="topbar-user" onclick="App.showUserMenu()">
+          <span id="topbarUserAvatar">👩</span>
+          <span id="topbarUserName">Karen</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTIONS -->
+    <div class="sections-container">
+
+      <!-- DASHBOARD -->
+      <section id="sec-dashboard" class="section active">
+        <div class="section-header">
+          <h2>Panel Principal</h2>
+          <div class="header-actions">
+            <select id="dashPeriod" onchange="Dashboard.render()" class="select-sm">
+              <option value="month">Este mes</option>
+              <option value="lastmonth">Mes anterior</option>
+              <option value="year">Este año</option>
+              <option value="all">Todo</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="stats-grid" id="dashStats"></div>
+
+        <div class="dash-grid">
+          <div class="card">
+            <div class="card-header"><h3>Flujo Mensual</h3></div>
+            <canvas id="dashFlowChart" height="200"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Gastos por Categoría</h3></div>
+            <canvas id="dashCategoryChart" height="200"></canvas>
+          </div>
+        </div>
+
+        <div class="dash-grid-2">
+          <div class="card">
+            <div class="card-header">
+              <h3>⚠️ Próximos Pagos</h3>
+              <a class="link-sm" onclick="App.navigate('calendar')">Ver todos</a>
+            </div>
+            <div id="dashUpcoming"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>🎯 Metas de Ahorro</h3>
+              <a class="link-sm" onclick="App.navigate('savings')">Ver todas</a>
+            </div>
+            <div id="dashSavings"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>🕒 Últimas Transacciones</h3>
+              <a class="link-sm" onclick="App.navigate('transactions')">Ver todas</a>
+            </div>
+            <div id="dashRecent"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TRANSACTIONS -->
+      <section id="sec-transactions" class="section">
+        <div class="section-header">
+          <h2>Transacciones</h2>
+          <button class="btn-primary" onclick="Transactions.openModal()">+ Nueva</button>
+        </div>
+        <div class="filters-bar">
+          <input type="text" id="txSearch" placeholder="🔍 Buscar..." oninput="Transactions.filter()" class="input-search">
+          <select id="txType" onchange="Transactions.filter()" class="select-sm">
+            <option value="">Todos</option>
+            <option value="income">Ingresos</option>
+            <option value="expense">Gastos</option>
+          </select>
+          <select id="txCategory" onchange="Transactions.filter()" class="select-sm">
+            <option value="">Categoría</option>
+          </select>
+          <select id="txPerson" onchange="Transactions.filter()" class="select-sm">
+            <option value="">Persona</option>
+            <option value="karen">Karen</option>
+            <option value="miguel">Miguel</option>
+            <option value="shared">Compartido</option>
+          </select>
+          <input type="month" id="txMonth" onchange="Transactions.filter()" class="input-month">
+        </div>
+        <div class="tx-summary" id="txSummary"></div>
+        <div class="list-container" id="txList"></div>
+      </section>
+
+      <!-- SAVINGS -->
+      <section id="sec-savings" class="section">
+        <div class="section-header">
+          <h2>Metas de Ahorro</h2>
+          <button class="btn-primary" onclick="Savings.openModal()">+ Nueva Meta</button>
+        </div>
+        <div class="stats-grid" id="savingsStats"></div>
+        <div class="goals-grid" id="savingsList"></div>
+      </section>
+
+      <!-- DEBTS -->
+      <section id="sec-debts" class="section">
+        <div class="section-header">
+          <h2>Deudas</h2>
+          <button class="btn-primary" onclick="Debts.openModal()">+ Nueva Deuda</button>
+        </div>
+        <div class="stats-grid" id="debtsStats"></div>
+        <div class="list-container" id="debtsList"></div>
+      </section>
+
+      <!-- BUDGET -->
+      <section id="sec-budget" class="section">
+        <div class="section-header">
+          <h2>Presupuesto Mensual</h2>
+          <div class="header-actions">
+            <input type="month" id="budgetMonth" onchange="Budget.render()" class="input-month">
+            <button class="btn-primary" onclick="Budget.openModal()">+ Categoría</button>
+          </div>
+        </div>
+        <div class="stats-grid" id="budgetStats"></div>
+        <div id="budgetList"></div>
+      </section>
+
+      <!-- NOTES -->
+      <section id="sec-notes" class="section">
+        <div class="section-header">
+          <h2>Notas</h2>
+          <div class="header-actions">
+            <input type="text" id="notesSearch" placeholder="🔍 Buscar..." oninput="Notes.filter()" class="input-search">
+            <button class="btn-primary" onclick="Notes.openModal()">+ Nueva Nota</button>
+          </div>
+        </div>
+        <div class="tags-filter" id="notesTagsFilter"></div>
+        <div class="notes-grid" id="notesList"></div>
+      </section>
+
+      <!-- TASKS -->
+      <section id="sec-tasks" class="section">
+        <div class="section-header">
+          <h2>Listas de Tareas</h2>
+          <button class="btn-primary" onclick="Tasks.openListModal()">+ Nueva Lista</button>
+        </div>
+        <div id="taskLists"></div>
+      </section>
+
+      <!-- CALENDAR -->
+      <section id="sec-calendar" class="section">
+        <div class="section-header">
+          <h2>Calendario Financiero</h2>
+          <div class="header-actions">
+            <button class="btn-icon" onclick="Calendar.prevMonth()">◀</button>
+            <span id="calMonthLabel" class="month-label"></span>
+            <button class="btn-icon" onclick="Calendar.nextMonth()">▶</button>
+          </div>
+        </div>
+        <div id="calendarGrid"></div>
+        <div class="card mt-lg">
+          <div class="card-header"><h3>Eventos del mes</h3></div>
+          <div id="calEventsList"></div>
+        </div>
+      </section>
+
+      <!-- PAYMENTS -->
+      <section id="sec-payments" class="section">
+        <div class="section-header">
+          <h2>Portal de Pagos</h2>
+        </div>
+        <p class="text-muted mb-lg">Accede directamente a los portales de pago de tus servicios. Los pagos se registran automáticamente en tus transacciones.</p>
+        <div id="paymentPortals"></div>
+        <div class="section-header mt-xl">
+          <h3>Mis Servicios Configurados</h3>
+          <button class="btn-primary" onclick="Payments.openModal()">+ Agregar Servicio</button>
+        </div>
+        <div id="paymentsList"></div>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="sec-reports" class="section">
+        <div class="section-header">
+          <h2>Reportes & Análisis</h2>
+          <div class="header-actions">
+            <select id="reportPeriod" onchange="Reports.render()" class="select-sm">
+              <option value="month">Este mes</option>
+              <option value="3months">Últimos 3 meses</option>
+              <option value="6months">Últimos 6 meses</option>
+              <option value="year">Este año</option>
+            </select>
+          </div>
+        </div>
+        <div class="reports-grid">
+          <div class="card">
+            <div class="card-header"><h3>Ingresos vs Gastos</h3></div>
+            <canvas id="reportIncomeExpense" height="250"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Distribución de Gastos</h3></div>
+            <canvas id="reportCategories" height="250"></canvas>
+          </div>
+          <div class="card span-2">
+            <div class="card-header"><h3>Tendencia de Ahorros</h3></div>
+            <canvas id="reportSavings" height="200"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Karen vs Miguel</h3></div>
+            <canvas id="reportPersons" height="250"></canvas>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>Patrimonio Neto</h3></div>
+            <canvas id="reportNetWorth" height="250"></canvas>
+          </div>
+        </div>
+        <div class="card mt-lg">
+          <div class="card-header">
+            <h3>Resumen Detallado</h3>
+            <button class="btn-outline" onclick="Reports.exportCSV()">📥 Exportar CSV</button>
+          </div>
+          <div id="reportSummaryTable"></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section id="sec-settings" class="section">
+        <div class="section-header"><h2>Ajustes</h2></div>
+        <div class="settings-grid">
+          <div class="card">
+            <div class="card-header"><h3>👥 Perfiles</h3></div>
+            <div id="settingsProfiles"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>💱 Moneda & Formato</h3></div>
+            <div id="settingsCurrency"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>🔔 Notificaciones & Alertas</h3></div>
+            <div id="settingsNotif"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>🎨 Apariencia</h3></div>
+            <div id="settingsTheme"></div>
+          </div>
+          <div class="card span-2">
+            <div class="card-header">
+              <h3>☁️ Sincronización Google Drive</h3>
+              <span id="driveSyncPillSettings" style="font-size:12px;color:var(--text-m)"></span>
+            </div>
+            <div id="settingsDrive"></div>
+          </div>
+          <div class="card span-2">
+            <div class="card-header"><h3>💾 Datos & Backup</h3></div>
+            <div id="settingsData"></div>
+          </div>
+        </div>
+      </section>
+
+    </div><!-- /sections-container -->
+  </main>
+</div><!-- /app -->
+
+<!-- BOTTOM NAV (mobile) -->
+<nav class="bottom-nav">
+  <a class="bnav-item active" data-section="dashboard" onclick="App.navigate('dashboard')">
+    <span>🏠</span><small>Inicio</small>
+  </a>
+  <a class="bnav-item" data-section="transactions" onclick="App.navigate('transactions')">
+    <span>💸</span><small>Movimientos</small>
+  </a>
+  <a class="bnav-item" data-section="savings" onclick="App.navigate('savings')">
+    <span>🎯</span><small>Ahorros</small>
+  </a>
+  <a class="bnav-item" data-section="debts" onclick="App.navigate('debts')">
+    <span>💳</span><small>Deudas</small>
+  </a>
+  <a class="bnav-item" data-section="notes" onclick="App.navigate('notes')">
+    <span>📝</span><small>Notas</small>
+  </a>
+  <a class="bnav-item" data-section="tasks" onclick="App.navigate('tasks')">
+    <span>✅</span><small>Tareas</small>
+  </a>
+  <a class="bnav-item bnav-more" onclick="App.toggleMoreMenu()">
+    <span>⋯</span><small>Más</small>
+  </a>
+</nav>
+
+<!-- MORE MENU (mobile) -->
+<div class="more-menu" id="moreMenu">
+  <a onclick="App.navigate('budget');App.toggleMoreMenu()">📊 Presupuesto</a>
+  <a onclick="App.navigate('calendar');App.toggleMoreMenu()">📅 Calendario</a>
+  <a onclick="App.navigate('payments');App.toggleMoreMenu()">🏦 Pagos</a>
+  <a onclick="App.navigate('reports');App.toggleMoreMenu()">📈 Reportes</a>
+  <a onclick="App.navigate('settings');App.toggleMoreMenu()">⚙️ Ajustes</a>
+</div>
+
+<!-- GLOBAL MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="App.closeModal(event)">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">Modal</h3>
+      <button class="modal-close" onclick="App.closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- VOICE NOTE RECORDER -->
+<div class="voice-recorder" id="voiceRecorder" style="display:none">
+  <div class="voice-recorder-inner">
+    <div class="voice-wave" id="voiceWave">
+      <div class="voice-dot"></div><div class="voice-dot"></div><div class="voice-dot"></div>
+      <div class="voice-dot"></div><div class="voice-dot"></div>
+    </div>
+    <div class="voice-time" id="voiceTime">0:00</div>
+    <div class="voice-controls">
+      <button onclick="Voice.toggle()" id="voiceToggleBtn" class="btn-voice-record">⏸</button>
+      <button onclick="Voice.stop(true)" class="btn-voice-stop">✓ Guardar</button>
+      <button onclick="Voice.stop(false)" class="btn-voice-cancel">✕ Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toastContainer"></div>
+
+<!-- SIDEBAR OVERLAY (mobile) -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="App.toggleSidebar()"></div>
+
+<!-- QUICK ADD FAB -->
+<button class="fab" onclick="App.showQuickAdd()" title="Agregar rápido">+</button>
+
+<!-- SCRIPTS -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="js/db.js"></script>
+<script src="js/state.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/voice.js"></script>
+<script src="js/app.js"></script>
+<script src="js/alerts.js"></script>
+<script src="js/drive-sync.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/transactions.js"></script>
+<script src="js/savings.js"></script>
+<script src="js/debts.js"></script>
+<script src="js/budget.js"></script>
+<script src="js/notes.js"></script>
+<script src="js/tasks.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/payments.js"></script>
+<script src="js/reports.js"></script>
+<script src="js/settings.js"></script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+  }
+</script>
+</body>
+</html>
