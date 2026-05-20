@@ -246,7 +246,7 @@ const DriveSync = (() => {
 
   /* Intercept State.set for auto-sync */
   const _origSet = State.set.bind(State);
-  const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','current_user','dismissed_alerts'];
+  const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','current_user','dismissed_alerts','auth_users','auth_session'];
   State.set = function(key, value) {
     _origSet(key, value);
     if (_pulling) return;                       // don't echo remote data back up

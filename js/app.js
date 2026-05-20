@@ -231,7 +231,8 @@ const App = (() => {
             ${currentUser === u ? '<span style="color:var(--success)">✓</span>' : ''}
           </button>`;
         }).join('')}
-      </div>`);
+      </div>
+      <button class="btn-outline" style="width:100%;margin-top:14px" onclick="App.closeModal();Auth.logout()">🔒 Cerrar sesión</button>`);
   }
 
   function toggleMoreMenu() {
@@ -254,8 +255,11 @@ const App = (() => {
   };
 })();
 
-/* Boot */
-document.addEventListener('DOMContentLoaded', () => App.init());
+/* Boot — Auth controla el arranque (muestra login o entra a la app) */
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof Auth !== 'undefined') Auth.init();
+  else App.init();
+});
 
 /* Close more menu on outside click */
 document.addEventListener('click', e => {

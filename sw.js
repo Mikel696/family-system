@@ -1,4 +1,4 @@
-const CACHE   = 'family-system-v3';
+const CACHE   = 'family-system-v4';
 const ASSETS  = [
   './',
   './index.html',
@@ -8,6 +8,7 @@ const ASSETS  = [
   './js/utils.js',
   './js/voice.js',
   './js/app.js',
+  './js/auth.js',
   './js/alerts.js',
   './js/drive-sync.js',
   './js/dashboard.js',
