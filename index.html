@@ -362,40 +362,6 @@
   </main>
 </div><!-- /app -->
 
-<!-- BOTTOM NAV (mobile) -->
-<nav class="bottom-nav" style="display:none">
-  <a class="bnav-item active" data-section="dashboard" onclick="App.navigate('dashboard')">
-    <span>🏠</span><small>Inicio</small>
-  </a>
-  <a class="bnav-item" data-section="transactions" onclick="App.navigate('transactions')">
-    <span>💸</span><small>Movimientos</small>
-  </a>
-  <a class="bnav-item" data-section="savings" onclick="App.navigate('savings')">
-    <span>🎯</span><small>Ahorros</small>
-  </a>
-  <a class="bnav-item" data-section="debts" onclick="App.navigate('debts')">
-    <span>💳</span><small>Deudas</small>
-  </a>
-  <a class="bnav-item" data-section="notes" onclick="App.navigate('notes')">
-    <span>📝</span><small>Notas</small>
-  </a>
-  <a class="bnav-item" data-section="tasks" onclick="App.navigate('tasks')">
-    <span>✅</span><small>Tareas</small>
-  </a>
-  <a class="bnav-item bnav-more" onclick="App.toggleMoreMenu()">
-    <span>⋯</span><small>Más</small>
-  </a>
-</nav>
-
-<!-- MORE MENU (mobile) -->
-<div class="more-menu" id="moreMenu">
-  <a onclick="App.navigate('budget');App.toggleMoreMenu()">📊 Presupuesto</a>
-  <a onclick="App.navigate('calendar');App.toggleMoreMenu()">📅 Calendario</a>
-  <a onclick="App.navigate('payments');App.toggleMoreMenu()">🏦 Pagos</a>
-  <a onclick="App.navigate('reports');App.toggleMoreMenu()">📈 Reportes</a>
-  <a onclick="App.navigate('settings');App.toggleMoreMenu()">⚙️ Ajustes</a>
-</div>
-
 <!-- GLOBAL MODAL -->
 <div class="modal-overlay" id="modalOverlay" onclick="App.closeModal(event)">
   <div class="modal" id="modal">

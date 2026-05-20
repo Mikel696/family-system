@@ -63,6 +63,9 @@ const App = (() => {
       settings:     () => Settings.render()
     };
     if (renders[section]) renders[section]();
+    // Cerrar el menú lateral (móvil) al elegir una sección
+    document.getElementById('sidebar')?.classList.remove('open');
+    document.getElementById('sidebarOverlay')?.classList.remove('open');
     window.scrollTo(0, 0);
   }
 

@@ -40,7 +40,7 @@
 
   --sidebar-w:  240px;
   --topbar-h:   60px;
-  --bnav-h:     64px;
+  --bnav-h:     0px;  /* sin barra inferior — navegación por el menú lateral */
 
   --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
 }
@@ -1490,11 +1490,17 @@ canvas { max-width: 100%; }
 @media (max-width: 900px) {
   .sidebar { transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); }
-  .main-content { margin-left: 0; }
+  .main-content { margin-left: 0; min-width: 0; }
   .menu-toggle { display: flex; }
-  .bottom-nav { display: flex; }
   .fab { display: flex; }
   .sections-container { padding: 16px; padding-bottom: calc(16px + var(--bnav-h)); }
+  /* Topbar compacto en móvil — evita el desbordamiento horizontal */
+  .topbar { padding: 0 12px; gap: 6px; }
+  .topbar-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-actions { gap: 4px; }
+  .drive-label { display: none; }
+  #topbarUserName { display: none; }
+  .topbar-user { padding: 6px 8px; }
   .reports-grid { grid-template-columns: 1fr; }
   .reports-grid .span-2 { grid-column: span 1; }
   .settings-grid .span-2 { grid-column: span 1; }
@@ -1564,3 +1570,11 @@ canvas { max-width: 100%; }
 .login-hint { font-size: 12px; color: var(--text-m); margin-bottom: 14px; }
 .login-err  { color: #EF4444; font-size: 12px; min-height: 16px; margin-bottom: 6px; }
 .login-foot { font-size: 11px; color: var(--text-m); margin-top: 22px; }
+
+/* ===== Prevención de desbordes horizontales en móvil ===== */
+.dash-grid > *, .dash-grid-2 > *, .goals-grid > *,
+.reports-grid > *, .settings-grid > *, .stats-grid > * { min-width: 0; }
+.card { min-width: 0; }
+.tx-item, .tx-info { min-width: 0; }
+.tx-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#reportSummaryTable { overflow-x: auto; }
