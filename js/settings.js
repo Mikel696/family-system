@@ -149,41 +149,24 @@ const Settings = (() => {
   }
 
   function _renderDriveSync() {
-    const clientId  = State.get('drive_client_id', '');
     const connected = DriveSync.isConnected();
     const lastSync  = State.get('drive_last_sync');
     const el        = document.getElementById('settingsDrive');
     if (!el) return;
     el.innerHTML = `
-      <div class="drive-setup-box">
-        <h4>¿Cómo configurar Google Drive Sync?</h4>
-        <p>Para sincronizar tus datos en tiempo real entre dispositivos necesitas un <b>Client ID de Google OAuth2</b>. Es gratuito y toma 5 minutos:</p>
-        <ol class="drive-steps">
-          <li>Ve a <a href="https://console.cloud.google.com/" target="_blank">console.cloud.google.com</a></li>
-          <li>Crea un proyecto → <b>APIs y Servicios → Credenciales</b></li>
-          <li>Haz clic en <b>+ Crear credenciales → ID de cliente de OAuth 2.0</b></li>
-          <li>Tipo: <b>Aplicación web</b></li>
-          <li>En "Orígenes de JavaScript autorizados" agrega: <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:11px">${window.location.origin}</code></li>
-          <li>Copia el <b>Client ID</b> y pégalo abajo</li>
-          <li>Ve a <b>Biblioteca</b> y activa la <b>Google Drive API</b></li>
-        </ol>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Google OAuth2 Client ID</label>
-        <input type="text" id="driveClientId" class="form-input"
-          value="${Utils.escHtml(clientId)}"
-          placeholder="XXXXXXXXXXXXX.apps.googleusercontent.com">
-        <div style="font-size:11px;color:var(--text-m);margin-top:4px">
-          Tu Client ID se guarda solo en este dispositivo, nunca se envía a terceros.
-        </div>
-      </div>
+      <p style="font-size:13px;color:var(--text-m);margin-bottom:6px">
+        Sincroniza tus datos entre el celular y el PC a través de tu Google Drive.
+      </p>
+      <p style="font-size:12px;color:var(--text-m);margin-bottom:14px">
+        ⚠️ Conéctate con la <b>misma cuenta de Google</b> en todos los dispositivos
+        para compartir la misma información.
+      </p>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <span id="driveSyncDot" style="width:10px;height:10px;border-radius:50%;background:#6B7280;display:inline-block"></span>
         <span id="driveSyncLabel" style="font-size:13px;color:var(--text-m)">${connected ? 'Conectado' : 'No conectado'}</span>
         <span id="driveLastSync" style="font-size:11px;color:var(--text-s)">${lastSync ? 'Última sync: ' + Utils.formatDateTime(lastSync) : ''}</span>
       </div>
       <div class="btn-group">
-        <button class="btn-primary" onclick="Settings._saveClientId()">💾 Guardar Client ID</button>
         ${connected
           ? `<button class="btn-success"  onclick="DriveSync.push()">🔄 Sincronizar ahora</button>
              <button class="btn-outline"  onclick="DriveSync.pull()">⬇️ Descargar desde Drive</button>

@@ -7,6 +7,10 @@ const DriveSync = (() => {
   const FILENAME   = 'family-system-data.json';
   const SCOPE      = 'https://www.googleapis.com/auth/drive';
   const POLL_MS    = 60000;   // revisa Drive cada 60 s para traer cambios de otros dispositivos
+  // Client ID de OAuth 2.0 (información pública por diseño — la seguridad la da el
+  // "Authorized JavaScript origin" registrado en Google Cloud). Integrado para que
+  // ningún dispositivo tenga que pegarlo a mano.
+  const CLIENT_ID  = '996951686845-06ogvm7h3hki2khnf5s9d1n0khvebete.apps.googleusercontent.com';
   let _token       = null;
   let _fileId      = null;
   let _timer       = null;    // debounce de push
@@ -18,12 +22,10 @@ const DriveSync = (() => {
 
   /* ---- Init ---- */
   function init() {
-    const clientId = State.get('drive_client_id', '');
-    if (!clientId) return;
     if (typeof google === 'undefined' || !google.accounts) { console.warn('GIS not loaded'); return; }
     try {
       _client = google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
+        client_id: CLIENT_ID,
         scope: SCOPE,
         callback: async resp => {
           if (resp.error) {
@@ -50,8 +52,6 @@ const DriveSync = (() => {
 
   /* ---- API pública ---- */
   function connect() {
-    const clientId = State.get('drive_client_id', '');
-    if (!clientId) { App.toast('Ingresa tu Client ID de Google en Ajustes primero', 'warning'); return; }
     if (!_client) init();
     if (!_client) { App.toast('Recarga la página e intenta de nuevo', 'error'); return; }
     _client.requestAccessToken({ prompt: 'select_account' });
