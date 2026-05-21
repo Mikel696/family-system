@@ -1,4 +1,4 @@
-const CACHE   = 'family-system-v5';
+const CACHE   = 'family-system-v6';
 const ASSETS  = [
   './',
   './index.html',
@@ -48,21 +48,21 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
-  // Network-first for Google APIs, cache-first for app assets
+  // Google APIs: siempre a la red
   if (e.request.url.includes('googleapis.com') || e.request.url.includes('accounts.google.com')) {
     e.respondWith(fetch(e.request).catch(() => new Response('', { status: 503 })));
     return;
   }
+  // App: NETWORK-FIRST — siempre la última versión si hay internet;
+  // la caché solo es respaldo cuando no hay conexión.
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const net = fetch(e.request).then(resp => {
-        if (resp.ok && resp.type === 'basic') {
-          caches.open(CACHE).then(c => c.put(e.request, resp.clone()));
-        }
-        return resp;
-      }).catch(() => cached);
-      return cached || net;
-    })
+    fetch(e.request).then(resp => {
+      if (resp && resp.ok && resp.type === 'basic') {
+        const copy = resp.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+      }
+      return resp;
+    }).catch(() => caches.match(e.request).then(c => c || caches.match('./index.html')))
   );
 });
 

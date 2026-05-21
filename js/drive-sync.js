@@ -1,17 +1,20 @@
 /* Google Drive Sync — OAuth2 + Drive REST API v3 · Family System
  * Setup: Google Cloud Console → OAuth 2.0 Client ID (Web application)
- * Authorized JavaScript origins: your app URL (e.g. http://localhost:3457)
+ * Authorized JavaScript origins: your app URL (e.g. https://mikel696.github.io)
  * Scope `drive` lets the app find and keep ONE shared document on your Drive.
  */
 const DriveSync = (() => {
-  const FILENAME = 'family-system-data.json';
-  const SCOPE    = 'https://www.googleapis.com/auth/drive';
-  let _token   = null;
-  let _fileId  = null;
-  let _timer   = null;
-  let _client  = null;
-  let _status  = 'disconnected';
-  let _pulling = false;   // true while applying remote data (suppresses re-sync)
+  const FILENAME   = 'family-system-data.json';
+  const SCOPE      = 'https://www.googleapis.com/auth/drive';
+  const POLL_MS    = 60000;   // revisa Drive cada 60 s para traer cambios de otros dispositivos
+  let _token       = null;
+  let _fileId      = null;
+  let _timer       = null;    // debounce de push
+  let _pollTimer   = null;    // intervalo de pull automático
+  let _client      = null;
+  let _status      = 'disconnected';
+  let _pulling     = false;   // true mientras se aplican datos remotos (evita re-sync)
+  let _lastDocSync = null;    // syncedAt del último documento procesado
 
   /* ---- Init ---- */
   function init() {
@@ -23,25 +26,29 @@ const DriveSync = (() => {
         client_id: clientId,
         scope: SCOPE,
         callback: async resp => {
-          if (resp.error) { _setStatus('error'); App.toast('Error al conectar con Google: ' + resp.error, 'error'); return; }
+          if (resp.error) {
+            _setStatus('error');
+            App.toast('Error al conectar con Google: ' + resp.error, 'error');
+            return;
+          }
           _token = resp.access_token;
           State.set('drive_connected', true);
-          App.toast('✅ Conectado a Google Drive', 'success');
           _setStatus('syncing');
-          await pull();      // bring remote in (merged, never destructive)
-          await push();      // write the merged result back
+          await pull();          // trae lo remoto (merge, nunca destructivo)
+          await push();          // sube el resultado combinado
+          _startPolling();       // revisa Drive periódicamente
           _setStatus('connected');
           _refreshSettingsUI();
         }
       });
-      // Auto-reconnect silently if previously connected
+      // Reconexión silenciosa si ya estaba conectado
       if (State.get('drive_connected') && _client) {
         _client.requestAccessToken({ prompt: '' });
       }
     } catch(e) { console.error('DriveSync init error', e); }
   }
 
-  /* ---- Public API ---- */
+  /* ---- API pública ---- */
   function connect() {
     const clientId = State.get('drive_client_id', '');
     if (!clientId) { App.toast('Ingresa tu Client ID de Google en Ajustes primero', 'warning'); return; }
@@ -55,6 +62,7 @@ const DriveSync = (() => {
       google.accounts.oauth2.revoke(_token, () => {});
     }
     _token = null; _fileId = null;
+    clearInterval(_pollTimer);
     State.set('drive_connected', false);
     _setStatus('disconnected');
     App.toast('Desconectado de Google Drive', 'info');
@@ -68,7 +76,14 @@ const DriveSync = (() => {
     _timer = setTimeout(() => push(), 2500);
   }
 
-  /* ---- Payload build ---- */
+  /* Renueva el token de forma silenciosa cuando expira (cada ~1 h) */
+  function _renewToken() {
+    _token = null;
+    if (_client) { try { _client.requestAccessToken({ prompt: '' }); } catch(e) { _setStatus('error'); } }
+    else _setStatus('error');
+  }
+
+  /* ---- Construcción del documento ---- */
   function _gatherBudgets() {
     const out = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -77,7 +92,7 @@ const DriveSync = (() => {
         try { out[k.slice(6)] = JSON.parse(localStorage.getItem(k)); } catch(e) {}
       }
     }
-    return out; // keys look like 'budget_2026-05'
+    return out; // claves tipo 'budget_2026-05'
   }
 
   function _buildPayload() {
@@ -98,7 +113,7 @@ const DriveSync = (() => {
     };
   }
 
-  /* ---- Merge (last-write-wins by timestamp, never destructive) ---- */
+  /* ---- Merge (gana el más reciente por timestamp, nunca destructivo) ---- */
   function _ts(x) {
     return Date.parse((x && (x.updatedAt || x.createdAt)) || '') || 0;
   }
@@ -143,21 +158,24 @@ const DriveSync = (() => {
     try {
       if (!_fileId) await _findOrCreate();
       if (!_fileId) { _setStatus('error'); return; }
-      const body = JSON.stringify(_buildPayload(), null, 2);
+      const payload = _buildPayload();
       const r = await fetch(
         `https://www.googleapis.com/upload/drive/v3/files/${_fileId}?uploadType=media`,
-        { method: 'PATCH', headers: { Authorization: 'Bearer ' + _token, 'Content-Type': 'application/json' }, body }
+        { method: 'PATCH', headers: { Authorization: 'Bearer ' + _token, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload, null, 2) }
       );
-      if (r.status === 401) { _token = null; _setStatus('error'); return; }
+      if (r.status === 401) { _renewToken(); return; }
       if (!r.ok) { console.error('Drive push HTTP', r.status); _setStatus('error'); return; }
+      _lastDocSync = payload.syncedAt;   // lo que acabo de subir — el poll no lo re-aplica
       State.set('drive_last_sync', new Date().toISOString());
       _setStatus('connected');
       _updateSyncTime();
     } catch(e) { console.error('Drive push', e); _setStatus('error'); }
   }
 
-  async function pull() {
+  async function pull(opts) {
     if (!_token) return;
+    const silent = opts && opts.silent;
     try {
       if (!_fileId) await _findOrCreate();
       if (!_fileId) return;
@@ -165,21 +183,32 @@ const DriveSync = (() => {
         `https://www.googleapis.com/drive/v3/files/${_fileId}?alt=media`,
         { headers: { Authorization: 'Bearer ' + _token } }
       );
-      if (r.status === 401) { _token = null; _setStatus('error'); return; }
+      if (r.status === 401) { _renewToken(); return; }
       if (!r.ok) return;
       const text = await r.text();
-      if (!text || !text.trim()) return; // brand-new empty file — nothing to merge
+      if (!text || !text.trim()) return;          // archivo recién creado, vacío
       let data;
       try { data = JSON.parse(text); }
-      catch(e) { console.warn('Drive file is not valid JSON, skipping merge'); return; }
+      catch(e) { console.warn('Drive file no es JSON válido'); return; }
+      // ¿Cambió desde la última vez? Si no, no hacemos nada.
+      if (data.syncedAt && data.syncedAt === _lastDocSync) { _setStatus('connected'); return; }
       _applyRemote(data);
+      _lastDocSync = data.syncedAt || _lastDocSync;
       State.set('drive_last_sync', new Date().toISOString());
+      _setStatus('connected');
       _updateSyncTime();
       _refreshCurrent();
+      if (silent) App.toast('🔄 Cambios recibidos desde Drive', 'info');
     } catch(e) { console.error('Drive pull', e); }
   }
 
-  /* ---- Find or create the data file ---- */
+  /* Revisa Drive periódicamente para traer cambios hechos en otros dispositivos */
+  function _startPolling() {
+    clearInterval(_pollTimer);
+    _pollTimer = setInterval(() => { if (_token) pull({ silent: true }); }, POLL_MS);
+  }
+
+  /* ---- Buscar o crear el archivo de datos ---- */
   async function _findOrCreate() {
     try {
       const q = encodeURIComponent(`name='${FILENAME}' and trashed=false`);
@@ -191,7 +220,7 @@ const DriveSync = (() => {
         const { files } = await r.json();
         if (files && files.length > 0) { _fileId = files[0].id; return; }
       }
-      // Create the file already populated — it is never left empty
+      // Crear el archivo ya con contenido — nunca queda vacío
       const boundary = '----family-system-' + Date.now();
       const metadata = { name: FILENAME, mimeType: 'application/json' };
       const multipart =
@@ -210,7 +239,7 @@ const DriveSync = (() => {
     } catch(e) { console.error('_findOrCreate', e); }
   }
 
-  /* ---- UI helpers ---- */
+  /* ---- UI ---- */
   function _setStatus(s) {
     _status = s;
     const el = document.getElementById('driveSyncDot');
@@ -236,20 +265,38 @@ const DriveSync = (() => {
     if (typeof Settings !== 'undefined') Settings.render();
   }
 
+  /* Re-renderiza la sección que el usuario está viendo tras recibir cambios */
   function _refreshCurrent() {
-    try { if (typeof Dashboard !== 'undefined') Dashboard.render(); } catch(e) {}
-    try { if (typeof Alerts   !== 'undefined') Alerts.check();    } catch(e) {}
+    try {
+      const active = document.querySelector('.section.active');
+      const id = active ? active.id.replace('sec-', '') : 'dashboard';
+      const renders = {
+        dashboard:    () => Dashboard.render(),
+        transactions: () => Transactions.filter(),
+        savings:      () => Savings.render(),
+        debts:        () => Debts.render(),
+        budget:       () => Budget.render(),
+        notes:        () => Notes.render(),
+        tasks:        () => Tasks.render(),
+        calendar:     () => Calendar.render(),
+        payments:     () => Payments.render(),
+        reports:      () => Reports.render(),
+        settings:     () => Settings.render()
+      };
+      if (renders[id]) renders[id]();
+      if (typeof Alerts !== 'undefined') Alerts.check();
+    } catch(e) { console.error('refresh', e); }
   }
 
   function isConnected() { return !!_token; }
   function getStatus()   { return _status; }
 
-  /* Intercept State.set for auto-sync */
+  /* Intercepta State.set para auto-sync */
   const _origSet = State.set.bind(State);
   const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','current_user','dismissed_alerts','auth_users','auth_session'];
   State.set = function(key, value) {
     _origSet(key, value);
-    if (_pulling) return;                       // don't echo remote data back up
+    if (_pulling) return;                         // no devolver datos remotos hacia arriba
     if (_token && _SKIP.indexOf(key) === -1) scheduleSync();
   };
 
