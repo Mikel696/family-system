@@ -1579,6 +1579,33 @@ canvas { max-width: 100%; }
 .tx-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #reportSummaryTable { overflow-x: auto; }
 
+/* ===== Cards por persona (dashboard) ===== */
+.person-stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.person-stat-card {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform .15s, border-color .15s, box-shadow .15s;
+  min-width: 0;
+}
+.person-stat-card:hover { transform: translateY(-2px); border-color: var(--primary); }
+.person-stat-card.karen  { border-left: 3px solid #EC4899; }
+.person-stat-card.miguel { border-left: 3px solid #3B82F6; }
+.person-stat-card .ps-icon  { font-size: 22px; flex-shrink: 0; }
+.person-stat-card .ps-body  { min-width: 0; overflow: hidden; }
+.person-stat-card .ps-label { font-size: 10px; color: var(--text-m); text-transform: uppercase; letter-spacing: 0.05em; }
+.person-stat-card .ps-value { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 900px) { .person-stat-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 420px) { .person-stat-row { grid-template-columns: 1fr; } }
+
 /* ===== Chat flotante ===== */
 .chat-fab {
   position: fixed; bottom: 90px; right: 20px;

@@ -7,9 +7,45 @@ const Dashboard = (() => {
     const txs    = _filterByPeriod(State.getTransactions(), period);
     _renderHero();
     _renderStats(txs);
+    _renderPersonStats(txs);
     _renderUpcoming();
     _renderSavings();
     _renderRecent(txs);
+  }
+
+  function _renderPersonStats(txs) {
+    const el = document.getElementById('dashPersonStats');
+    if (!el) return;
+    const settings = State.getSettings();
+    const profiles = settings.profiles || {};
+    const sum = (type, person) => txs
+      .filter(t => t.type === type && t.person === person)
+      .reduce((s, t) => s + (t.amount || 0), 0);
+
+    const makeCard = (person, type) => {
+      const p     = profiles[person] || { name: person, avatar: person === 'karen' ? '👩' : '👨' };
+      const isInc = type === 'income';
+      const value = sum(type, person);
+      const label = isInc ? 'Ingresos' : 'Gastos';
+      const color = isInc ? 'text-success' : 'text-danger';
+      const sign  = isInc ? '+ ' : '- ';
+      return `
+        <div class="person-stat-card ${person}" onclick="App.navigate('transactions', { type:'${type}', person:'${person}' })">
+          <span class="ps-icon">${p.avatar}</span>
+          <div class="ps-body">
+            <div class="ps-label">${label} ${Utils.escHtml(p.name || person)}</div>
+            <div class="ps-value ${color}">${value ? sign : ''}${Utils.formatCurrency(value)}</div>
+          </div>
+        </div>`;
+    };
+
+    el.innerHTML = `
+      <div class="person-stat-row">
+        ${makeCard('karen', 'income')}
+        ${makeCard('karen', 'expense')}
+        ${makeCard('miguel', 'income')}
+        ${makeCard('miguel', 'expense')}
+      </div>`;
   }
 
   function _renderHero() {
