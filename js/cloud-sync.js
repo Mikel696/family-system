@@ -1,31 +1,31 @@
 /* Cloud Sync — Supabase backend · Family System
  *
- * Diseño robusto con cola persistente ("outbox"):
- *   - Cada State.set que cambia un doc lo marca como "dirty" en una cola
- *     guardada en localStorage. Si la app se cierra o se cae internet, la cola
- *     sobrevive y se procesa al recargar / al volver online.
- *   - Un único procesador (_flush) recorre la cola en serie, hace pull-merge-push
- *     y solo borra de la cola lo que subió OK.
- *   - Reintenta automáticamente en: window 'online', visibilitychange, cada 15 s,
- *     y al recibir cualquier nuevo cambio.
- *   - Si una sesión expira o el token está mal, intenta refrescarla y reintenta.
- *   - El badge de la nube refleja el estado real: pendientes, sync, OK o error.
+ * ARQUITECTURA v24 (un item = una fila):
+ *   - Tabla `items`(id uuid pk, category text, data jsonb, deleted bool, updated_at)
+ *     Cada transacción, ahorro, deuda, etc. es UNA fila individual.
+ *   - Al guardar localmente, State.save<X> llama Cloud.upsertItem(category, item).
+ *   - Al borrar localmente, State.delete<X> llama Cloud.markDeleted(category, id).
+ *   - Realtime escucha INSERT/UPDATE/DELETE sobre `items` y actualiza el localStorage
+ *     fila por fila, sin pisar nada.
+ *   - Profiles / dismissed_alerts / budgets siguen en la tabla family_data como
+ *     "documentos singleton" (objetos sin id propio).
+ *
+ *   No hay merge de arrays gigantes → no hay race conditions.
  */
 const Cloud = (() => {
-  const TABLE        = 'family_data';
-  const PENDING_KEY  = 'cloud_pending';
-  const RETRY_MS     = 15000;          // reintento automático cada 15 s si quedan pendientes
-  const DEBOUNCE_MS  = 600;            // tras un cambio, esperar 0.6 s antes del flush
-  const ARRAY_DOCS   = ['transactions','savings','debts','notes','tasklists','payment_services'];
+  const ITEMS_TABLE = 'items';
+  const META_TABLE  = 'family_data';
+  const PENDING_KEY = 'cloud_pending_v2';
+  const RETRY_MS    = 15000;
+  const ARRAY_CATS  = ['transactions','savings','debts','notes','tasklists','payment_services'];
 
-  let _client       = null;
-  let _channel      = null;
-  let _status       = 'disconnected';
-  let _pulling      = false;
-  let _processing   = false;
-  let _flushTimer   = null;
-  let _pending      = new Set();       // docIds pendientes de subir
-  let _lastTs       = {};              // docId → updated_at remoto procesado
+  let _client      = null;
+  let _channels    = [];
+  let _status      = 'disconnected';
+  let _pulling     = false;
+  let _processing  = false;
+  // Cola persistente: cada entrada es { op:'upsert'|'delete', cat, id, data?, ts }
+  let _outbox      = [];
 
   /* =================== INIT =================== */
   async function init(client) {
@@ -35,20 +35,18 @@ const Cloud = (() => {
     // Cargar cola persistente
     try {
       const arr = State.get(PENDING_KEY, []);
-      if (Array.isArray(arr)) arr.forEach(d => _pending.add(d));
+      if (Array.isArray(arr)) _outbox = arr;
     } catch(e) {}
 
     if (!await _ensureSession()) return;
 
     try {
       _setStatus('syncing');
-      await pullAll();
-      // ⚠️ Ya NO seedeamos dirty inicial: causaba que un dispositivo pasivo
-      // subiera su versión local pisando cambios que otro dispositivo acababa
-      // de hacer. Si hay algo realmente pendiente, está en la cola persistente.
+      await loadAllItems();
+      await loadMeta();        // profiles + dismissed_alerts + budgets
       _subscribe();
-      _flush();                         // procesa cola pendiente real
-      _setStatus(_pending.size ? 'syncing' : 'connected');
+      _flushOutbox();          // procesa cambios pendientes locales
+      _setStatus(_outbox.length ? 'syncing' : 'connected');
       State.set('drive_last_sync', new Date().toISOString());
       State.set('drive_last_error', '');
     } catch (e) {
@@ -57,82 +55,144 @@ const Cloud = (() => {
     }
   }
 
-  /* =================== PENDING / OUTBOX =================== */
-  function _markDirty(docId) {
-    _pending.add(docId);
-    _savePending();
-    _scheduleFlush();
-    _setStatus('syncing');
-  }
-  function _savePending() {
-    try { State.set(PENDING_KEY, [..._pending]); } catch(e) {}
-  }
-  function _scheduleFlush() {
-    clearTimeout(_flushTimer);
-    _flushTimer = setTimeout(_flush, DEBOUNCE_MS);
+  /* =================== LOAD ALL ITEMS (al iniciar) =================== */
+  async function loadAllItems() {
+    if (!_client) return;
+    const { data, error } = await _client.from(ITEMS_TABLE).select('id, category, data, deleted, updated_at');
+    if (error) { _setError('Error al leer items: ' + error.message); return; }
+    if (!data) return;
+    // Agrupar por categoría. Items con deleted=true NO se incluyen en el local
+    // (los renders nunca los ven, y al volver a aparecer arriba se reinsertan).
+    const byCat = {};
+    for (const cat of ARRAY_CATS) byCat[cat] = [];
+    for (const row of data) {
+      if (!ARRAY_CATS.includes(row.category)) continue;
+      if (row.deleted) continue;
+      const item = row.data || {};
+      item.id = row.id;            // garantiza id consistente
+      item.updatedAt = row.updated_at;
+      byCat[row.category].push(item);
+    }
+    _pulling = true;
+    try { for (const cat of ARRAY_CATS) State.set(cat, byCat[cat]); }
+    finally { _pulling = false; }
   }
 
-  /* Procesa la cola de pendientes. Si algo falla, deja en la cola para reintentar. */
-  async function _flush() {
+  /* =================== LOAD META SINGLETONS =================== */
+  async function loadMeta() {
+    if (!_client) return;
+    try {
+      const { data } = await _client.from(META_TABLE).select('id, data').in('id', ['profiles','dismissed_alerts']);
+      if (!data) return;
+      _pulling = true;
+      try {
+        for (const row of data) {
+          if (row.id === 'profiles' && row.data && typeof row.data === 'object') {
+            const s = State.getSettings();
+            s.profiles = Object.assign({}, s.profiles || {}, row.data);
+            State.saveSettings(s);
+            if (typeof App !== 'undefined' && App.refreshUserUI) App.refreshUserUI();
+          } else if (row.id === 'dismissed_alerts' && Array.isArray(row.data)) {
+            const merged = [...new Set([...(State.get('dismissed_alerts', []) || []), ...row.data])];
+            State.set('dismissed_alerts', merged);
+          }
+        }
+      } finally { _pulling = false; }
+    } catch(e) { console.warn('loadMeta', e); }
+  }
+
+  /* =================== UPSERT / DELETE PÚBLICOS =================== */
+  /* Llamados desde state.js cada vez que se guarda o borra un item. */
+  function upsertItem(category, item) {
+    if (!item || !item.id || !ARRAY_CATS.includes(category)) return;
+    _enqueue({ op: 'upsert', cat: category, id: item.id, data: item, ts: Date.now() });
+  }
+  function markDeleted(category, id) {
+    if (!id || !ARRAY_CATS.includes(category)) return;
+    _enqueue({ op: 'delete', cat: category, id, ts: Date.now() });
+  }
+  function upsertMeta(id, data) {
+    _enqueue({ op: 'meta', id, data, ts: Date.now() });
+  }
+
+  function _enqueue(entry) {
+    if (_pulling) return;                 // no echo cambios remotos
+    _outbox.push(entry);
+    _persistOutbox();
+    _setStatus('syncing');
+    _scheduleFlush();
+  }
+  function _persistOutbox() {
+    try { State.set(PENDING_KEY, _outbox); } catch(e) {}
+  }
+
+  let _flushTimer = null;
+  function _scheduleFlush() {
+    clearTimeout(_flushTimer);
+    _flushTimer = setTimeout(_flushOutbox, 400);
+  }
+
+  /* =================== FLUSH OUTBOX =================== */
+  async function _flushOutbox() {
     if (_processing || !_client) return;
-    if (_pending.size === 0) { _setStatus('connected'); return; }
+    if (_outbox.length === 0) { _setStatus('connected'); return; }
     if (!await _ensureSession()) return;
     _processing = true;
-    let anyFailed = false;
+    let firstFailure = null;
     try {
-      // Tomar snapshot — la cola puede crecer durante el procesamiento
-      const docs = [..._pending];
-      for (const docId of docs) {
-        const ok = await _tryPushOne(docId);
+      while (_outbox.length > 0) {
+        const entry = _outbox[0];
+        let ok = false;
+        try {
+          if (entry.op === 'upsert') ok = await _doUpsert(entry);
+          else if (entry.op === 'delete') ok = await _doDelete(entry);
+          else if (entry.op === 'meta')   ok = await _doMeta(entry);
+          else ok = true;                 // entradas desconocidas se descartan
+        } catch(e) { console.warn('outbox op', entry, e); ok = false; }
         if (ok) {
-          _pending.delete(docId);
-          _savePending();
+          _outbox.shift();
+          _persistOutbox();
         } else {
-          anyFailed = true;
-          break; // si uno falla, paramos y reintentamos luego
+          firstFailure = entry; break;
         }
       }
-    } finally {
-      _processing = false;
-    }
-    if (_pending.size === 0 && !anyFailed) {
+    } finally { _processing = false; }
+    if (!firstFailure) {
       _setStatus('connected');
       State.set('drive_last_sync', new Date().toISOString());
       State.set('drive_last_error', '');
     }
   }
 
-  async function _tryPushOne(docId) {
-    try {
-      // Pull-merge SIEMPRE: traer lo remoto y mergear ANTES de subir.
-      // Esto evita pisar cambios que otros dispositivos acaban de hacer.
-      await _pullDocAndMerge(docId);
-      const value = _gatherDoc(docId);
-      if (value === undefined) return true;   // nada que subir
-      const updated_at = new Date().toISOString();
-      const { data: returned, error } = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at }).select().maybeSingle();
-      if (error) {
-        if (/row-level security|policy/i.test(error.message || '')) {
-          // Sesión muerta — pedimos refresh y reintentamos una vez
-          const ok = await _tryRefreshSession();
-          if (ok) {
-            const retry = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at });
-            if (retry.error) { _setError('Sesión inválida. Vuelve a iniciar sesión.'); return false; }
-          } else {
-            _setError('Sesión expirada. Toca "Cerrar sesión y volver a entrar".');
-            return false;
-          }
-        } else {
-          _setError('Error al guardar: ' + error.message);
-          return false;
-        }
-      }
-      _lastTs[docId] = (returned && returned.updated_at) || updated_at;
-      return true;
-    } catch(e) {
-      console.warn('tryPushOne', docId, e);
-      return false;
+  async function _doUpsert(entry) {
+    const updated_at = new Date().toISOString();
+    const { error } = await _client.from(ITEMS_TABLE).upsert({
+      id: entry.id, category: entry.cat, data: entry.data, deleted: false, updated_at
+    });
+    if (error) {
+      if (/row-level security|policy/i.test(error.message || '')) {
+        const ok = await _tryRefreshSession();
+        if (!ok) { _setError('Sesión expirada. Cierra sesión y vuelve a entrar.'); return false; }
+        const retry = await _client.from(ITEMS_TABLE).upsert({ id: entry.id, category: entry.cat, data: entry.data, deleted: false, updated_at });
+        if (retry.error) { _setError('Error al guardar: ' + retry.error.message); return false; }
+      } else { _setError('Error al guardar: ' + error.message); return false; }
     }
+    return true;
+  }
+
+  async function _doDelete(entry) {
+    const { error } = await _client.from(ITEMS_TABLE)
+      .update({ deleted: true, updated_at: new Date().toISOString() })
+      .eq('id', entry.id);
+    if (error) { _setError('Error al borrar: ' + error.message); return false; }
+    return true;
+  }
+
+  async function _doMeta(entry) {
+    const updated_at = new Date().toISOString();
+    const { error } = await _client.from(META_TABLE).upsert({ id: entry.id, data: entry.data, updated_at });
+    if (error) { _setError('Error al guardar ' + entry.id + ': ' + error.message); return false; }
+    return true;
   }
 
   /* =================== AUTH =================== */
@@ -141,12 +201,8 @@ const Cloud = (() => {
     try {
       const { data: { session } } = await _client.auth.getSession();
       if (!session || !session.user) {
-        // Intento de refresh antes de declarar muerta la sesión
         const refreshed = await _tryRefreshSession();
-        if (!refreshed) {
-          _setError('Sesión expirada — toca "Cerrar sesión y volver a entrar".');
-          return false;
-        }
+        if (!refreshed) { _setError('Sesión expirada — cierra sesión y vuelve a entrar.'); return false; }
       }
       return true;
     } catch (e) {
@@ -154,7 +210,6 @@ const Cloud = (() => {
       return false;
     }
   }
-
   async function _tryRefreshSession() {
     try {
       const { data, error } = await _client.auth.refreshSession();
@@ -162,109 +217,70 @@ const Cloud = (() => {
     } catch(e) { return false; }
   }
 
-  /* =================== PULL =================== */
-  async function pullAll() {
-    if (!_client) return;
-    const { data, error } = await _client.from(TABLE).select('id, data, updated_at');
-    if (error) { _setError('Error al leer: ' + error.message); return; }
-    if (!data) return;
-    _pulling = true;
-    try { data.forEach(row => _applyDoc(row.id, row.data, row.updated_at)); }
-    finally { _pulling = false; }
-  }
-
-  async function _pullDocAndMerge(docId) {
-    if (!_client) return;
-    try {
-      const { data: rows } = await _client.from(TABLE).select('data, updated_at').eq('id', docId).limit(1);
-      if (!rows || rows.length === 0) return;
-      const row = rows[0];
-      // ⚠️ Ya NO skipeamos por _lastTs: siempre mergeamos lo remoto
-      // (es barato y evita pisar cambios de otros dispositivos).
-      _pulling = true;
-      try { _applyDoc(docId, row.data, row.updated_at); }
-      finally { _pulling = false; }
-    } catch(e) { console.warn('pullDocAndMerge', e); }
-  }
-
-  function _applyDoc(id, data, ts) {
-    _lastTs[id] = ts;
-    if (id === 'profiles') {
-      const s = State.getSettings();
-      s.profiles = Object.assign({}, s.profiles || {}, data || {});
-      State.saveSettings(s);
-      if (typeof App !== 'undefined' && App.refreshUserUI) App.refreshUserUI();
-      return;
-    }
-    if (id === 'dismissed_alerts') {
-      const merged = [...new Set([...(State.get('dismissed_alerts', []) || []), ...(Array.isArray(data) ? data : [])])];
-      State.set('dismissed_alerts', merged);
-      return;
-    }
-    if (id.indexOf('budget_') === 0) {
-      State.set(id, data);
-      return;
-    }
-    if (Array.isArray(data) && ARRAY_DOCS.indexOf(id) !== -1) {
-      // Merge RAW (con _deleted incluido) — los renders ya filtran los borrados.
-      const local = State.get(id, []);
-      State.set(id, _mergeById(local, data));
-      return;
-    }
-  }
-
-  function _ts(x) { return Date.parse((x && (x.updatedAt || x.createdAt)) || '') || 0; }
-  function _mergeById(local, remote) {
-    const map = {};
-    (Array.isArray(local)  ? local  : []).forEach(x => { if (x && x.id) map[x.id] = x; });
-    (Array.isArray(remote) ? remote : []).forEach(x => {
-      if (!x || !x.id) return;
-      const cur = map[x.id];
-      if (!cur || _ts(x) >= _ts(cur)) map[x.id] = x;
-    });
-    return Object.values(map);
-  }
-
-  function _gatherDoc(id) {
-    // ⚠️ Usamos State.get RAW (no los getters) para incluir items con _deleted=true
-    // y propagar los borrados a otros dispositivos.
-    if (id === 'transactions')     return State.get('transactions',    []);
-    if (id === 'savings')          return State.get('savings',         []);
-    if (id === 'debts')            return State.get('debts',           []);
-    if (id === 'notes')            return State.get('notes',           []);
-    if (id === 'tasklists')        return State.get('tasklists',       []);
-    if (id === 'payment_services') return State.get('payment_services',[]);
-    if (id === 'profiles')         return State.getSettings().profiles || {};
-    if (id === 'dismissed_alerts') return State.get('dismissed_alerts', []);
-    if (id.indexOf('budget_') === 0) return State.get(id, []);
-    return undefined;
-  }
-
   /* =================== REALTIME =================== */
   function _subscribe() {
     if (!_client) return;
-    if (_channel) { try { _channel.unsubscribe(); } catch(e){} }
-    _channel = _client.channel('family_data_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, payload => {
-        try {
-          const row = payload.new || payload.old;
-          if (!row || !row.id) return;
-          if (_lastTs[row.id] === row.updated_at) return;  // mi propia escritura
-          _pulling = true;
-          try { _applyDoc(row.id, row.data, row.updated_at); }
-          finally { _pulling = false; }
-          _refreshCurrent();
-        } catch (e) { console.error('realtime', e); }
+    _channels.forEach(ch => { try { ch.unsubscribe(); } catch(e){} });
+    _channels = [];
+
+    // Items: insert, update (incluyendo soft-delete), delete físico
+    const itemsCh = _client.channel('items_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: ITEMS_TABLE }, payload => {
+        _applyItemEvent(payload);
       })
-      .subscribe(status => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          // Intento de reconexión en próximo flush/visibility
-          console.warn('realtime channel:', status);
-        }
-      });
+      .subscribe();
+    _channels.push(itemsCh);
+
+    // Meta: profiles y dismissed_alerts en family_data
+    const metaCh = _client.channel('meta_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: META_TABLE }, payload => {
+        const row = payload.new || payload.old;
+        if (!row || !row.id) return;
+        _applyMetaEvent(row.id, row.data);
+      })
+      .subscribe();
+    _channels.push(metaCh);
   }
 
-  /* =================== UI / status =================== */
+  function _applyItemEvent(payload) {
+    const ev  = payload.eventType;          // INSERT | UPDATE | DELETE
+    const row = payload.new || payload.old;
+    if (!row || !row.category) return;
+    if (!ARRAY_CATS.includes(row.category)) return;
+    const list = State.get(row.category, []) || [];
+    const idx  = list.findIndex(x => x && x.id === row.id);
+    _pulling = true;
+    try {
+      if (ev === 'DELETE' || (row.deleted === true)) {
+        // Quitar del local
+        if (idx >= 0) { list.splice(idx, 1); State.set(row.category, list); }
+      } else {
+        const item = row.data || {};
+        item.id = row.id;
+        item.updatedAt = row.updated_at;
+        if (idx >= 0) list[idx] = item; else list.unshift(item);
+        State.set(row.category, list);
+      }
+    } finally { _pulling = false; }
+    _refreshCurrent();
+  }
+
+  function _applyMetaEvent(id, data) {
+    _pulling = true;
+    try {
+      if (id === 'profiles' && data && typeof data === 'object') {
+        const s = State.getSettings();
+        s.profiles = Object.assign({}, s.profiles || {}, data);
+        State.saveSettings(s);
+        if (typeof App !== 'undefined' && App.refreshUserUI) App.refreshUserUI();
+      } else if (id === 'dismissed_alerts' && Array.isArray(data)) {
+        State.set('dismissed_alerts', data);
+      }
+    } finally { _pulling = false; }
+    _refreshCurrent();
+  }
+
+  /* =================== UI =================== */
   function _setStatus(s) {
     _status = s;
     const el = document.getElementById('driveSyncDot');
@@ -277,7 +293,7 @@ const Cloud = (() => {
       const labels = {
         disconnected:'Conectando…',
         connected:'Sincronizado',
-        syncing: _pending.size > 0 ? ('Subiendo ' + _pending.size + '…') : 'Sincronizando…',
+        syncing: _outbox.length > 0 ? ('Subiendo ' + _outbox.length + '…') : 'Sincronizando…',
         error:'⚠️ Reconectar'
       };
       lbl.textContent = labels[s] || s;
@@ -323,66 +339,38 @@ const Cloud = (() => {
   /* =================== TRIGGERS DE REINTENTO =================== */
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && _client) {
-      pullAll().then(() => { _refreshCurrent(); _flush(); });
+      loadAllItems().then(() => loadMeta()).then(() => { _refreshCurrent(); _flushOutbox(); });
     }
   });
-  window.addEventListener('online', () => {
-    if (_client) _flush();
-  });
-  // Reintento periódico mientras haya pendientes
-  setInterval(() => { if (_client && _pending.size > 0) _flush(); }, RETRY_MS);
-  // Best-effort al cerrar pestaña (no garantizado pero ayuda)
+  window.addEventListener('online', () => { if (_client) _flushOutbox(); });
+  setInterval(() => { if (_client && _outbox.length > 0) _flushOutbox(); }, RETRY_MS);
   window.addEventListener('beforeunload', () => {
-    if (_pending.size > 0) {
-      try { State.set(PENDING_KEY, [..._pending]); } catch(e) {}
-    }
+    if (_outbox.length > 0) { try { State.set(PENDING_KEY, _outbox); } catch(e) {} }
   });
-
-  /* =================== INTERCEPTOR STATE.set =================== */
-  const _origSet = State.set.bind(State);
-  const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','drive_last_error','current_user','auth_users','auth_session','chat_last_read','cloud_pending'];
-  State.set = function(key, value) {
-    _origSet(key, value);
-    if (_pulling) return;
-    if (_SKIP.indexOf(key) !== -1) return;
-    let docId = null;
-    if (ARRAY_DOCS.indexOf(key) !== -1) docId = key;
-    else if (key === 'settings')          docId = 'profiles';
-    else if (key === 'dismissed_alerts')  docId = 'dismissed_alerts';
-    else if (key.indexOf('budget_') === 0) docId = key;
-    if (docId) _markDirty(docId);
-  };
 
   /* =================== API PÚBLICA =================== */
   function isConnected() { return !!_client; }
   function getStatus()   { return _status; }
   function getLastError(){ return State.get('drive_last_error', ''); }
-  function pendingCount(){ return _pending.size; }
+  function pendingCount(){ return _outbox.length; }
 
   async function manualPush() {
     if (!_client) { App.toast('Aún conectándose…', 'info'); return; }
-    // Marca TODO como dirty para forzar resubida
-    ['transactions','savings','debts','notes','tasklists','payment_services','profiles'].forEach(d => _pending.add(d));
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.indexOf('karen_budget_') === 0) _pending.add(k.slice(6));
-    }
-    _savePending();
-    _setStatus('syncing');
-    await _flush();
+    await _flushOutbox();
     App.toast('Sincronizado ✓', 'success');
   }
   async function manualPull() {
     if (!_client) { App.toast('Aún conectándose…', 'info'); return; }
-    await pullAll();
+    await loadAllItems();
+    await loadMeta();
     _refreshCurrent();
     App.toast('🔄 Datos actualizados desde la nube', 'success');
   }
 
   return {
     init,
-    push: manualPush,
-    pull: manualPull,
+    upsertItem, markDeleted, upsertMeta,
+    push: manualPush, pull: manualPull,
     isConnected, getStatus, getLastError, pendingCount,
     _setStatus,
     connect:    () => init(),

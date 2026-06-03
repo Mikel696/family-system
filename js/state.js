@@ -1,4 +1,11 @@
-/* localStorage state management — con soft delete para sync seguro */
+/* State — localStorage cache + Cloud bridge.
+ * Cada save/delete:
+ *   1) actualiza localStorage (la UI lee de aquí).
+ *   2) notifica a Cloud (que sube/borra esa fila en Supabase).
+ *
+ * Los renders ven solo items "vivos" (sin _deleted).
+ * Los borrados se eliminan del local; el sync usa flag `deleted` en la tabla.
+ */
 const State = (() => {
   const PREFIX = 'karen_';
 
@@ -13,97 +20,110 @@ const State = (() => {
   }
   function update(key, fn, def = []) { set(key, fn(get(key, def))); }
 
-  // Filtra items con _deleted (los borrados quedan en almacenamiento para que el sync los propague,
-  // pero los renders solo ven los vivos).
-  function _alive(arr) { return (Array.isArray(arr) ? arr : []).filter(x => x && !x._deleted); }
-  // Marca un item como borrado con timestamp para que gane en el merge last-write-wins.
-  function _markDeleted(x) {
-    return Object.assign({}, x, { _deleted: true, updatedAt: new Date().toISOString() });
+  function _alive(arr) {
+    return (Array.isArray(arr) ? arr : []).filter(x => x && !x._deleted);
+  }
+  function _push(cat, item)  { if (typeof Cloud !== 'undefined') Cloud.upsertItem(cat, item); }
+  function _drop(cat, id)    { if (typeof Cloud !== 'undefined') Cloud.markDeleted(cat, id); }
+  function _meta(id, data)   { if (typeof Cloud !== 'undefined') Cloud.upsertMeta(id, data); }
+
+  function _saveItemInArray(key, item) {
+    update(key, list => {
+      const idx = list.findIndex(x => x && x.id === item.id);
+      if (idx >= 0) { list[idx] = item; } else { list.unshift(item); }
+      return list;
+    });
+  }
+  function _removeFromArray(key, id) {
+    update(key, list => list.filter(x => !(x && x.id === id)));
   }
 
-  /* Transactions */
+  /* ====== Transactions ====== */
   function getTransactions() { return _alive(get('transactions', [])); }
   function saveTransaction(tx) {
-    update('transactions', list => {
-      const idx = list.findIndex(t => t.id === tx.id);
-      if (idx >= 0) { list[idx] = tx; } else { list.unshift(tx); }
-      return list;
-    });
+    if (!tx || !tx.id) return;
+    tx.updatedAt = new Date().toISOString();
+    _saveItemInArray('transactions', tx);
+    _push('transactions', tx);
   }
   function deleteTransaction(id) {
-    update('transactions', list => list.map(t => t.id === id ? _markDeleted(t) : t));
+    _removeFromArray('transactions', id);
+    _drop('transactions', id);
   }
 
-  /* Savings */
+  /* ====== Savings ====== */
   function getSavings() { return _alive(get('savings', [])); }
   function saveSaving(s) {
-    update('savings', list => {
-      const idx = list.findIndex(x => x.id === s.id);
-      if (idx >= 0) { list[idx] = s; } else { list.unshift(s); }
-      return list;
-    });
+    if (!s || !s.id) return;
+    s.updatedAt = new Date().toISOString();
+    _saveItemInArray('savings', s);
+    _push('savings', s);
   }
   function deleteSaving(id) {
-    update('savings', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+    _removeFromArray('savings', id);
+    _drop('savings', id);
   }
 
-  /* Debts */
+  /* ====== Debts ====== */
   function getDebts() { return _alive(get('debts', [])); }
   function saveDebt(d) {
-    update('debts', list => {
-      const idx = list.findIndex(x => x.id === d.id);
-      if (idx >= 0) { list[idx] = d; } else { list.unshift(d); }
-      return list;
-    });
+    if (!d || !d.id) return;
+    d.updatedAt = new Date().toISOString();
+    _saveItemInArray('debts', d);
+    _push('debts', d);
   }
   function deleteDebt(id) {
-    update('debts', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+    _removeFromArray('debts', id);
+    _drop('debts', id);
   }
 
-  /* Budget */
+  /* ====== Budget (un objeto por mes — meta singleton) ====== */
   function getBudget(monthKey) { return get('budget_' + monthKey, []); }
-  function saveBudget(monthKey, categories) { set('budget_' + monthKey, categories); }
+  function saveBudget(monthKey, categories) {
+    set('budget_' + monthKey, categories);
+    _meta('budget_' + monthKey, categories);
+  }
 
-  /* Notes */
+  /* ====== Notes ====== */
   function getNotes() { return _alive(get('notes', [])); }
   function saveNote(n) {
-    update('notes', list => {
-      const idx = list.findIndex(x => x.id === n.id);
-      if (idx >= 0) { list[idx] = n; } else { list.unshift(n); }
-      return list;
-    });
+    if (!n || !n.id) return;
+    n.updatedAt = new Date().toISOString();
+    _saveItemInArray('notes', n);
+    _push('notes', n);
   }
   function deleteNote(id) {
-    update('notes', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+    _removeFromArray('notes', id);
+    _drop('notes', id);
   }
 
-  /* Tasks */
+  /* ====== Task lists ====== */
   function getTaskLists() { return _alive(get('tasklists', [])); }
   function saveTaskList(tl) {
-    update('tasklists', list => {
-      const idx = list.findIndex(x => x.id === tl.id);
-      if (idx >= 0) { list[idx] = tl; } else { list.unshift(tl); }
-      return list;
-    });
+    if (!tl || !tl.id) return;
+    tl.updatedAt = new Date().toISOString();
+    _saveItemInArray('tasklists', tl);
+    _push('tasklists', tl);
   }
   function deleteTaskList(id) {
-    update('tasklists', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+    _removeFromArray('tasklists', id);
+    _drop('tasklists', id);
   }
 
-  /* Payment services */
+  /* ====== Payment services ====== */
   function getPaymentServices() { return _alive(get('payment_services', [])); }
   function savePaymentService(ps) {
-    update('payment_services', list => {
-      const idx = list.findIndex(x => x.id === ps.id);
-      if (idx >= 0) { list[idx] = ps; } else { list.unshift(ps); }
-      return list;
-    });
+    if (!ps || !ps.id) return;
+    ps.updatedAt = new Date().toISOString();
+    _saveItemInArray('payment_services', ps);
+    _push('payment_services', ps);
   }
   function deletePaymentService(id) {
-    update('payment_services', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+    _removeFromArray('payment_services', id);
+    _drop('payment_services', id);
   }
 
-  /* Settings */
+  /* ====== Settings (profiles sí se sincronizan; el resto es local) ====== */
   function getSettings() {
     return get('settings', {
       currency: 'COP',
@@ -117,9 +137,12 @@ const State = (() => {
       }
     });
   }
-  function saveSettings(s) { set('settings', s); }
+  function saveSettings(s) {
+    set('settings', s);
+    if (s && s.profiles) _meta('profiles', s.profiles);
+  }
 
-  /* Current user */
+  /* ====== Current user ====== */
   function getUser() { return get('current_user', 'shared'); }
   function setUser(u) { set('current_user', u); }
 
