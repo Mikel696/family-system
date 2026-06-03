@@ -254,6 +254,7 @@ const App = (() => {
     init, navigate, switchUser, getUser, toggleSidebar, toggleTheme,
     openModal, closeModal, toast, showQuickAdd, _qaSetType, _qaSave,
     showUserMenu, toggleMoreMenu,
+    refreshUserUI: _updateUserUI,
     _qaType: () => _qaType
   };
 })();

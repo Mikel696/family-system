@@ -151,6 +151,7 @@ const Settings = (() => {
   function _renderDriveSync() {
     const connected = DriveSync.isConnected();
     const lastSync  = State.get('drive_last_sync');
+    const lastError = DriveSync.getLastError ? DriveSync.getLastError() : '';
     const el        = document.getElementById('settingsDrive');
     if (!el) return;
     el.innerHTML = `
@@ -161,6 +162,13 @@ const Settings = (() => {
         ⚠️ Conéctate con la <b>misma cuenta de Google</b> en todos los dispositivos
         para compartir la misma información.
       </p>
+      ${lastError ? `
+        <div style="background:rgba(239,68,68,0.12);border:1px solid #EF4444;border-radius:10px;padding:12px;margin-bottom:12px">
+          <div style="color:#EF4444;font-weight:700;font-size:13px;margin-bottom:6px">⚠️ Problema con la sincronización</div>
+          <div style="color:var(--text);font-size:12px;margin-bottom:10px">${Utils.escHtml(lastError)}</div>
+          <button class="btn-success" onclick="DriveSync.connect()">🔗 Reconectar con Google</button>
+        </div>
+      ` : ''}
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <span id="driveSyncDot" style="width:10px;height:10px;border-radius:50%;background:#6B7280;display:inline-block"></span>
         <span id="driveSyncLabel" style="font-size:13px;color:var(--text-m)">${connected ? 'Conectado' : 'No conectado'}</span>
