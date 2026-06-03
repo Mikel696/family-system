@@ -174,6 +174,10 @@ const DriveSync = (() => {
     try {
       if (!_fileId) await _findOrCreate();
       if (!_fileId) { _setError('No se pudo encontrar el archivo de datos en Drive.'); return; }
+      // ⚠️ Pull-before-push: traer cambios recientes de otros dispositivos
+      // y mergearlos con lo local ANTES de subir, así dos personas trabajando
+      // al mismo tiempo no se pisan entre sí.
+      await _pullForMerge();
       const payload = _buildPayload();
       const r = await fetch(
         `https://www.googleapis.com/upload/drive/v3/files/${_fileId}?uploadType=media`,
@@ -191,6 +195,25 @@ const DriveSync = (() => {
       console.error('Drive push', e);
       _setError('Sin conexión a Drive. Revisa tu internet.');
     }
+  }
+
+  /* Lee el documento remoto y lo mergea silenciosamente con lo local.
+     Se usa justo antes de cada push para no perder cambios del otro dispositivo. */
+  async function _pullForMerge() {
+    if (!_fileId || !_token) return;
+    try {
+      const r = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${_fileId}?alt=media`,
+        { headers: { Authorization: 'Bearer ' + _token } }
+      );
+      if (!r.ok) return;
+      const text = await r.text();
+      if (!text || !text.trim()) return;
+      const data = JSON.parse(text);
+      if (data.syncedAt && data.syncedAt === _lastDocSync) return; // ya estamos al día
+      _applyRemote(data);
+      _lastDocSync = data.syncedAt || _lastDocSync;
+    } catch(e) { /* silencioso: el push principal manejará errores serios */ }
   }
 
   async function pull(opts) {

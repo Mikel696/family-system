@@ -31,8 +31,8 @@ const App = (() => {
     navigate('dashboard');
     _requestNotifPermission();
 
-    // Init Drive sync (after GIS library may have loaded)
-    setTimeout(() => { if (typeof DriveSync !== 'undefined') DriveSync.init(); }, 1500);
+    // Conectar Drive lo antes posible — esperamos sólo a que GIS esté listo
+    _initDriveASAP();
 
     // Drive sync pill click → settings
     document.getElementById('driveSyncPill')?.addEventListener('click', () => navigate('settings'));
@@ -240,6 +240,22 @@ const App = (() => {
 
   function toggleMoreMenu() {
     document.getElementById('moreMenu').classList.toggle('open');
+  }
+
+  /* Llama a DriveSync.init() en cuanto Google Identity Services esté disponible
+     (en lugar de esperar 1500 ms ciegamente). Así la sincronización arranca
+     prácticamente al instante después del login. */
+  function _initDriveASAP() {
+    let tries = 0;
+    const tick = () => {
+      if (typeof DriveSync === 'undefined') return;
+      if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
+        DriveSync.init();
+        return;
+      }
+      if (++tries < 40) setTimeout(tick, 250); // hasta 10 s
+    };
+    tick();
   }
 
   function _requestNotifPermission() {
