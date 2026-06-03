@@ -41,13 +41,13 @@ const Cloud = (() => {
     if (!await _ensureSession()) return;
 
     try {
-      _setStatus(_pending.size ? 'syncing' : 'syncing');
+      _setStatus('syncing');
       await pullAll();
-      // Tras el pull inicial, marcamos TODO como dirty una vez para subir lo local
-      // (esto cubre el escenario de un dispositivo nuevo con datos sin sincronizar).
-      _seedInitialDirty();
+      // ⚠️ Ya NO seedeamos dirty inicial: causaba que un dispositivo pasivo
+      // subiera su versión local pisando cambios que otro dispositivo acababa
+      // de hacer. Si hay algo realmente pendiente, está en la cola persistente.
       _subscribe();
-      _flush();                         // procesa cola pendiente
+      _flush();                         // procesa cola pendiente real
       _setStatus(_pending.size ? 'syncing' : 'connected');
       State.set('drive_last_sync', new Date().toISOString());
       State.set('drive_last_error', '');
@@ -55,22 +55,6 @@ const Cloud = (() => {
       console.error('Cloud init', e);
       _setError('No se pudo conectar a la nube: ' + (e.message || e));
     }
-  }
-
-  /* Si la cola está vacía pero local tiene datos sin reflejar arriba, los marcamos
-     dirty para asegurar que la primera carga los suba. */
-  function _seedInitialDirty() {
-    if (_pending.size > 0) return;
-    const localHas = (k, fn) => {
-      try { const v = fn(); return Array.isArray(v) ? v.length > 0 : !!v; } catch(e){ return false; }
-    };
-    if (localHas('transactions',   () => State.getTransactions()))    _pending.add('transactions');
-    if (localHas('savings',        () => State.getSavings()))         _pending.add('savings');
-    if (localHas('debts',          () => State.getDebts()))           _pending.add('debts');
-    if (localHas('notes',          () => State.getNotes()))           _pending.add('notes');
-    if (localHas('tasklists',      () => State.getTaskLists()))       _pending.add('tasklists');
-    if (localHas('payment_services',() => State.getPaymentServices())) _pending.add('payment_services');
-    _savePending();
   }
 
   /* =================== PENDING / OUTBOX =================== */
@@ -120,12 +104,13 @@ const Cloud = (() => {
 
   async function _tryPushOne(docId) {
     try {
-      // Pull-merge: traer lo remoto antes de subir, para no pisar cambios ajenos
+      // Pull-merge SIEMPRE: traer lo remoto y mergear ANTES de subir.
+      // Esto evita pisar cambios que otros dispositivos acaban de hacer.
       await _pullDocAndMerge(docId);
       const value = _gatherDoc(docId);
       if (value === undefined) return true;   // nada que subir
       const updated_at = new Date().toISOString();
-      const { error } = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at });
+      const { data: returned, error } = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at }).select().maybeSingle();
       if (error) {
         if (/row-level security|policy/i.test(error.message || '')) {
           // Sesión muerta — pedimos refresh y reintentamos una vez
@@ -142,7 +127,7 @@ const Cloud = (() => {
           return false;
         }
       }
-      _lastTs[docId] = updated_at;
+      _lastTs[docId] = (returned && returned.updated_at) || updated_at;
       return true;
     } catch(e) {
       console.warn('tryPushOne', docId, e);
@@ -194,7 +179,8 @@ const Cloud = (() => {
       const { data: rows } = await _client.from(TABLE).select('data, updated_at').eq('id', docId).limit(1);
       if (!rows || rows.length === 0) return;
       const row = rows[0];
-      if (_lastTs[docId] === row.updated_at) return;
+      // ⚠️ Ya NO skipeamos por _lastTs: siempre mergeamos lo remoto
+      // (es barato y evita pisar cambios de otros dispositivos).
       _pulling = true;
       try { _applyDoc(docId, row.data, row.updated_at); }
       finally { _pulling = false; }
