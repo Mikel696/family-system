@@ -1,4 +1,4 @@
-/* localStorage state management */
+/* localStorage state management — con soft delete para sync seguro */
 const State = (() => {
   const PREFIX = 'karen_';
 
@@ -8,17 +8,21 @@ const State = (() => {
       return raw === null ? def : JSON.parse(raw);
     } catch { return def; }
   }
-
   function set(key, value) {
     try { localStorage.setItem(PREFIX + key, JSON.stringify(value)); } catch(e) { console.error('State.set', e); }
   }
+  function update(key, fn, def = []) { set(key, fn(get(key, def))); }
 
-  function update(key, fn, def = []) {
-    set(key, fn(get(key, def)));
+  // Filtra items con _deleted (los borrados quedan en almacenamiento para que el sync los propague,
+  // pero los renders solo ven los vivos).
+  function _alive(arr) { return (Array.isArray(arr) ? arr : []).filter(x => x && !x._deleted); }
+  // Marca un item como borrado con timestamp para que gane en el merge last-write-wins.
+  function _markDeleted(x) {
+    return Object.assign({}, x, { _deleted: true, updatedAt: new Date().toISOString() });
   }
 
   /* Transactions */
-  function getTransactions() { return get('transactions', []); }
+  function getTransactions() { return _alive(get('transactions', [])); }
   function saveTransaction(tx) {
     update('transactions', list => {
       const idx = list.findIndex(t => t.id === tx.id);
@@ -27,11 +31,11 @@ const State = (() => {
     });
   }
   function deleteTransaction(id) {
-    update('transactions', list => list.filter(t => t.id !== id));
+    update('transactions', list => list.map(t => t.id === id ? _markDeleted(t) : t));
   }
 
   /* Savings */
-  function getSavings() { return get('savings', []); }
+  function getSavings() { return _alive(get('savings', [])); }
   function saveSaving(s) {
     update('savings', list => {
       const idx = list.findIndex(x => x.id === s.id);
@@ -39,10 +43,12 @@ const State = (() => {
       return list;
     });
   }
-  function deleteSaving(id) { update('savings', list => list.filter(x => x.id !== id)); }
+  function deleteSaving(id) {
+    update('savings', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+  }
 
   /* Debts */
-  function getDebts() { return get('debts', []); }
+  function getDebts() { return _alive(get('debts', [])); }
   function saveDebt(d) {
     update('debts', list => {
       const idx = list.findIndex(x => x.id === d.id);
@@ -50,14 +56,16 @@ const State = (() => {
       return list;
     });
   }
-  function deleteDebt(id) { update('debts', list => list.filter(x => x.id !== id)); }
+  function deleteDebt(id) {
+    update('debts', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+  }
 
   /* Budget */
   function getBudget(monthKey) { return get('budget_' + monthKey, []); }
   function saveBudget(monthKey, categories) { set('budget_' + monthKey, categories); }
 
   /* Notes */
-  function getNotes() { return get('notes', []); }
+  function getNotes() { return _alive(get('notes', [])); }
   function saveNote(n) {
     update('notes', list => {
       const idx = list.findIndex(x => x.id === n.id);
@@ -65,10 +73,12 @@ const State = (() => {
       return list;
     });
   }
-  function deleteNote(id) { update('notes', list => list.filter(x => x.id !== id)); }
+  function deleteNote(id) {
+    update('notes', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+  }
 
   /* Tasks */
-  function getTaskLists() { return get('tasklists', []); }
+  function getTaskLists() { return _alive(get('tasklists', [])); }
   function saveTaskList(tl) {
     update('tasklists', list => {
       const idx = list.findIndex(x => x.id === tl.id);
@@ -76,10 +86,12 @@ const State = (() => {
       return list;
     });
   }
-  function deleteTaskList(id) { update('tasklists', list => list.filter(x => x.id !== id)); }
+  function deleteTaskList(id) {
+    update('tasklists', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+  }
 
   /* Payment services */
-  function getPaymentServices() { return get('payment_services', []); }
+  function getPaymentServices() { return _alive(get('payment_services', [])); }
   function savePaymentService(ps) {
     update('payment_services', list => {
       const idx = list.findIndex(x => x.id === ps.id);
@@ -87,7 +99,9 @@ const State = (() => {
       return list;
     });
   }
-  function deletePaymentService(id) { update('payment_services', list => list.filter(x => x.id !== id)); }
+  function deletePaymentService(id) {
+    update('payment_services', list => list.map(x => x.id === id ? _markDeleted(x) : x));
+  }
 
   /* Settings */
   function getSettings() {

@@ -220,6 +220,7 @@ const Cloud = (() => {
       return;
     }
     if (Array.isArray(data) && ARRAY_DOCS.indexOf(id) !== -1) {
+      // Merge RAW (con _deleted incluido) — los renders ya filtran los borrados.
       const local = State.get(id, []);
       State.set(id, _mergeById(local, data));
       return;
@@ -239,12 +240,14 @@ const Cloud = (() => {
   }
 
   function _gatherDoc(id) {
-    if (id === 'transactions')     return State.getTransactions();
-    if (id === 'savings')          return State.getSavings();
-    if (id === 'debts')            return State.getDebts();
-    if (id === 'notes')            return State.getNotes();
-    if (id === 'tasklists')        return State.getTaskLists();
-    if (id === 'payment_services') return State.getPaymentServices();
+    // ⚠️ Usamos State.get RAW (no los getters) para incluir items con _deleted=true
+    // y propagar los borrados a otros dispositivos.
+    if (id === 'transactions')     return State.get('transactions',    []);
+    if (id === 'savings')          return State.get('savings',         []);
+    if (id === 'debts')            return State.get('debts',           []);
+    if (id === 'notes')            return State.get('notes',           []);
+    if (id === 'tasklists')        return State.get('tasklists',       []);
+    if (id === 'payment_services') return State.get('payment_services',[]);
     if (id === 'profiles')         return State.getSettings().profiles || {};
     if (id === 'dismissed_alerts') return State.get('dismissed_alerts', []);
     if (id.indexOf('budget_') === 0) return State.get(id, []);
