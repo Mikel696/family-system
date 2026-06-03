@@ -177,14 +177,6 @@ const Settings = (() => {
     DriveSync._setStatus(DriveSync.getStatus());
   }
 
-  function _saveClientId() {
-    const val = document.getElementById('driveClientId')?.value.trim();
-    if (!val) { App.toast('Pega tu Client ID primero', 'warning'); return; }
-    State.set('drive_client_id', val);
-    App.toast('Client ID guardado. Haz clic en Conectar.', 'success');
-    DriveSync.init();
-    render();
-  }
 
   function _renderData() {
     const txCount  = State.getTransactions().length;
@@ -263,5 +255,5 @@ const Settings = (() => {
     Dashboard.render();
   }
 
-  return { render, exportData, importData, _doImport, clearData, _editAvatar, _saveAvatar, _saveName, _saveCurrency, _saveCurrSym, _saveNotif, _saveNotifDays, _testNotif, _saveTheme, _saveClientId, _renderDriveSync };
+  return { render, exportData, importData, _doImport, clearData, _editAvatar, _saveAvatar, _saveName, _saveCurrency, _saveCurrSym, _saveNotif, _saveNotifDays, _testNotif, _saveTheme, _renderDriveSync };
 })();

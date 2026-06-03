@@ -1,23 +1,43 @@
-/* Auth — Candado de acceso local (correo + contraseña) · Family System
- * App sin servidor: la validación ocurre en el dispositivo. La contraseña
- * NUNCA se guarda en texto; solo un hash PBKDF2-SHA256 en este equipo.
+/* Auth — Candado de acceso local · Family System
+ * Sin emails. Solo perfil + contraseña por dispositivo.
+ * La contraseña nunca sale del equipo (hash PBKDF2-SHA256).
  */
 const Auth = (() => {
-  // Usuarios autorizados → perfil interno de la app
-  const AUTHORIZED = {
-    'miguelbarros2416@gmail.com':  { profile: 'miguel', label: 'Miguel', avatar: '👨' },
-    'avendanozabaletak@gmail.com': { profile: 'karen',  label: 'Karen',  avatar: '👩' }
+  const PROFILES = {
+    miguel: { label: 'Miguel', avatar: '👨' },
+    karen:  { label: 'Karen',  avatar: '👩' }
   };
   const SESSION_HOURS = 24;
-  const MIN_LEN = 6;
+  const MIN_LEN = 4;
   let _selected = null;
 
-  /* ---- almacenamiento ---- */
   function _users()      { return State.get('auth_users', {}); }
   function _saveUsers(u) { State.set('auth_users', u); }
   function _session()    { return State.get('auth_session', null); }
 
-  /* ---- criptografía ---- */
+  /* Migración silenciosa: usuarios viejos por email → keys de perfil */
+  function _migrate() {
+    const u = _users();
+    const oldEmails = {
+      'miguelbarros2416@gmail.com':  'miguel',
+      'avendanozabaletak@gmail.com': 'karen'
+    };
+    let changed = false;
+    Object.keys(oldEmails).forEach(email => {
+      const profile = oldEmails[email];
+      if (u[email] && !u[profile]) {
+        u[profile] = { profile, salt: u[email].salt, hash: u[email].hash, createdAt: u[email].createdAt };
+        delete u[email];
+        changed = true;
+      }
+    });
+    const s = _session();
+    if (s && s.email && oldEmails[s.email]) {
+      State.set('auth_session', { profile: oldEmails[s.email], ts: s.ts });
+    }
+    if (changed) _saveUsers(u);
+  }
+
   function _randHex(n) {
     const a = new Uint8Array(n); crypto.getRandomValues(a);
     return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
@@ -31,31 +51,29 @@ const Auth = (() => {
     return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  /* ---- sesión ---- */
   function _sessionValid() {
     const s = _session();
-    if (!s || !s.email || !s.ts || !AUTHORIZED[s.email]) return false;
+    if (!s || !s.profile || !s.ts || !PROFILES[s.profile]) return false;
     return (Date.now() - s.ts) < SESSION_HOURS * 3600 * 1000;
   }
 
-  /* ---- ciclo de vida ---- */
   function init() {
-    if (_sessionValid()) _enterApp(_session().email);
+    _migrate();
+    if (_sessionValid()) _enterApp(_session().profile);
     else _renderPicker();
   }
 
-  function _enterApp(email) {
+  function _enterApp(profile) {
     const ls = document.getElementById('loginScreen');
     if (ls) ls.style.display = 'none';
     const app = document.getElementById('app');
     if (app) app.style.display = '';
-    const bn  = document.querySelector('.bottom-nav');
+    const bn = document.querySelector('.bottom-nav');
     if (bn) bn.style.removeProperty('display');
     const fab = document.querySelector('.fab');
     if (fab) fab.style.removeProperty('display');
     if (!window.__appStarted) { window.__appStarted = true; App.init(); }
-    const u = AUTHORIZED[email];
-    if (u && typeof App !== 'undefined') App.switchUser(u.profile);
+    if (PROFILES[profile] && typeof App !== 'undefined') App.switchUser(profile);
   }
 
   function logout() {
@@ -64,7 +82,6 @@ const Auth = (() => {
     location.reload();
   }
 
-  /* ---- pantalla ---- */
   function _screen() { return document.getElementById('loginScreen'); }
 
   function _renderPicker() {
@@ -76,28 +93,27 @@ const Auth = (() => {
         <h1 class="login-title">Family System</h1>
         <p class="login-sub">Selecciona tu perfil para continuar</p>
         <div class="login-profiles">
-          ${Object.entries(AUTHORIZED).map(([email, u]) => `
-            <button class="login-profile" onclick="Auth.pick('${email}')">
+          ${Object.entries(PROFILES).map(([key, u]) => `
+            <button class="login-profile" onclick="Auth.pick('${key}')">
               <span class="login-profile-av">${u.avatar}</span>
               <span class="login-profile-name">${u.label}</span>
-              <span class="login-profile-state">${users[email] ? '🔒 Con contraseña' : '✨ Primer ingreso'}</span>
+              <span class="login-profile-state">${users[key] ? '🔒 Con contraseña' : '✨ Primer ingreso'}</span>
             </button>`).join('')}
         </div>
-        <p class="login-foot">🔐 El acceso está protegido en este dispositivo</p>
+        <p class="login-foot">🔐 Acceso protegido en este dispositivo</p>
       </div>`;
     _screen().style.display = 'flex';
   }
 
-  function pick(email) {
-    _selected = email;
-    const u = AUTHORIZED[email];
-    if (!u) return;
-    const exists = !!_users()[email];
+  function pick(profile) {
+    _selected = profile;
+    const p = PROFILES[profile];
+    if (!p) return;
+    const exists = !!_users()[profile];
     _screen().innerHTML = `
       <div class="login-box">
-        <div class="login-logo">${u.avatar}</div>
-        <h1 class="login-title">Hola, ${u.label}</h1>
-        <p class="login-sub">${email}</p>
+        <div class="login-logo">${p.avatar}</div>
+        <h1 class="login-title">Hola, ${p.label}</h1>
         ${exists ? `
           <input type="password" id="loginPass" class="login-input" placeholder="Tu contraseña"
             onkeydown="if(event.key==='Enter')Auth.submit()">
@@ -122,16 +138,15 @@ const Auth = (() => {
   }
 
   async function submit() {
-    const email = _selected;
-    if (!email || !AUTHORIZED[email]) return;
-    const pass  = (document.getElementById('loginPass') || {}).value || '';
+    const profile = _selected;
+    if (!profile || !PROFILES[profile]) return;
+    const pass = (document.getElementById('loginPass') || {}).value || '';
     const users = _users();
-    const rec   = users[email];
-
+    const rec   = users[profile];
     try {
       if (rec) {
         const h = await _hash(pass, rec.salt);
-        if (h === rec.hash) _grant(email);
+        if (h === rec.hash) _grant(profile);
         else _err('Contraseña incorrecta');
       } else {
         const pass2 = (document.getElementById('loginPass2') || {}).value || '';
@@ -139,9 +154,9 @@ const Auth = (() => {
         if (pass !== pass2)        { _err('Las contraseñas no coinciden'); return; }
         const salt = _randHex(16);
         const hash = await _hash(pass, salt);
-        users[email] = { profile: AUTHORIZED[email].profile, salt, hash, createdAt: new Date().toISOString() };
+        users[profile] = { profile, salt, hash, createdAt: new Date().toISOString() };
         _saveUsers(users);
-        _grant(email);
+        _grant(profile);
       }
     } catch (e) {
       console.error('Auth submit', e);
@@ -149,12 +164,12 @@ const Auth = (() => {
     }
   }
 
-  function _grant(email) {
-    State.set('auth_session', { email, ts: Date.now() });
-    _enterApp(email);
+  function _grant(profile) {
+    State.set('auth_session', { profile, ts: Date.now() });
+    _enterApp(profile);
   }
 
-  function currentEmail() { return _sessionValid() ? _session().email : null; }
+  function currentProfile() { return _sessionValid() ? _session().profile : null; }
 
-  return { init, pick, submit, logout, currentEmail, _renderPicker };
+  return { init, pick, submit, logout, currentProfile, _renderPicker };
 })();
