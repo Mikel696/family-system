@@ -21,6 +21,7 @@ const Cloud = (() => {
   async function init(client) {
     _client = client || window.supabaseClient;
     if (!_client) { _setError('Cliente Supabase no disponible'); return; }
+    if (!await _ensureSession()) return;
     try {
       _setStatus('syncing');
       await pullAll();
@@ -85,10 +86,32 @@ const Cloud = (() => {
     return Object.values(map);
   }
 
+  /* Verifica que haya sesión Supabase autenticada y autorizada antes de hablar con la BD */
+  async function _ensureSession() {
+    if (!_client) return false;
+    try {
+      const { data: { session } } = await _client.auth.getSession();
+      if (!session || !session.user) {
+        _setError('Sesión expirada — toca "Reconectar" para volver a entrar.');
+        return false;
+      }
+      const okEmails = ['miguel@family.local', 'karen@family.local'];
+      if (okEmails.indexOf(session.user.email) === -1) {
+        _setError('Sesión de un usuario no autorizado (' + session.user.email + '). Cierra sesión y vuelve a entrar.');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      _setError('No se pudo verificar la sesión: ' + (e.message || e));
+      return false;
+    }
+  }
+
   /* =================== PUSH =================== */
   async function push(docId) {
     if (!_client) return;
     if (_gatherDoc(docId) === undefined) return;
+    if (!await _ensureSession()) return;     // sin sesión válida no intentamos (evita spam de errores)
     // Pull-merge antes de cada push para que dos personas escribiendo a la vez
     // no se pisen: traemos lo remoto, lo mergeamos con lo local, y subimos.
     await _pullDocAndMerge(docId);
@@ -96,7 +119,15 @@ const Cloud = (() => {
     if (value === undefined) return;
     const updated_at = new Date().toISOString();
     const { error } = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at });
-    if (error) { _setError('Error al guardar: ' + error.message); return; }
+    if (error) {
+      // Si es error de RLS, es problema de sesión — no spameamos
+      if (/row-level security|policy/i.test(error.message || '')) {
+        _setError('Sesión inválida. Pulsa "Reconectar" o cierra y vuelve a entrar.');
+      } else {
+        _setError('Error al guardar: ' + error.message);
+      }
+      return;
+    }
     _lastTs[docId] = updated_at;
     State.set('drive_last_sync', new Date().toISOString());
     State.set('drive_last_error', '');
@@ -180,11 +211,17 @@ const Cloud = (() => {
     }
   }
 
+  let _lastErrorAt = 0;
   function _setError(msg) {
     console.error('Cloud error:', msg);
     State.set('drive_last_error', msg);
     _setStatus('error');
-    if (typeof App !== 'undefined') App.toast('⚠️ ' + msg, 'error', 5000);
+    // No spamear toasts — máximo uno cada 6 segundos
+    const now = Date.now();
+    if (typeof App !== 'undefined' && (now - _lastErrorAt) > 6000) {
+      _lastErrorAt = now;
+      App.toast('⚠️ ' + msg, 'error', 5000);
+    }
     if (typeof Settings !== 'undefined') Settings.render();
   }
 

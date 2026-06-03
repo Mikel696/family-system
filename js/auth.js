@@ -31,9 +31,17 @@ const Auth = (() => {
       if (session && session.user) {
         const profile = _profileFromEmail(session.user.email);
         if (profile) { _enterApp(profile); return; }
+        // Sesión con email no autorizado (de tests previos) — limpiar
+        try { await _client.auth.signOut(); } catch(e) {}
       }
     } catch(e) { console.warn('auth getSession', e); }
     _renderPicker();
+  }
+
+  /* Llamado desde botones "Reconectar" cuando la sesión expira o se corrompe */
+  async function forceRelogin() {
+    try { if (_client) await _client.auth.signOut(); } catch(e) {}
+    location.reload();
   }
 
   function _enterApp(profile) {
@@ -111,20 +119,35 @@ const Auth = (() => {
     if (!_client) { _err('La nube no está cargada. Recarga la página.'); return; }
     const email = _emailFor(profile);
     _err('Verificando…', '#9B8FC4');
+
+    // Por si quedó una sesión vieja con otro email — la limpiamos
+    try {
+      const { data: { session } } = await _client.auth.getSession();
+      if (session && session.user && session.user.email !== email) {
+        await _client.auth.signOut();
+      }
+    } catch(e) {}
+
     let res = await _client.auth.signInWithPassword({ email, password });
     if (res.error) {
       // Si no existe, lo creamos (primer ingreso global de ese perfil)
-      if (/invalid|credentials|email not confirmed/i.test(res.error.message || '')) {
+      if (/invalid|credentials|email not confirmed|not found/i.test(res.error.message || '')) {
         const su = await _client.auth.signUp({ email, password });
         if (su.error) { _err('No se pudo crear: ' + su.error.message); return; }
         if (!su.data || !su.data.session) {
           const re = await _client.auth.signInWithPassword({ email, password });
           if (re.error) { _err('Contraseña incorrecta'); return; }
         }
-        _enterApp(profile);
       } else {
         _err(res.error.message);
+        return;
       }
+    }
+
+    // VERIFICACIÓN FINAL: la sesión debe ser del email correcto
+    const { data: { session: finalSession } } = await _client.auth.getSession();
+    if (!finalSession || !finalSession.user || finalSession.user.email !== email) {
+      _err('La sesión no se estableció. Reintenta.');
       return;
     }
     _enterApp(profile);
@@ -134,5 +157,5 @@ const Auth = (() => {
     return _currentProfile || _selected;
   }
 
-  return { init, pick, submit, logout, currentProfile, _renderPicker };
+  return { init, pick, submit, logout, currentProfile, forceRelogin, _renderPicker };
 })();
