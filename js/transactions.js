@@ -1,3 +1,10 @@
+/* helper: perfil real del usuario logueado (siempre 'karen' o 'miguel') */
+function _myProfile() {
+  const p = (typeof Auth !== 'undefined' && Auth.currentProfile && Auth.currentProfile()) ||
+            (typeof App  !== 'undefined' && App.getUser && App.getUser());
+  return (p === 'karen' || p === 'miguel') ? p : 'miguel';
+}
+
 const Transactions = (() => {
   let _pendingAttachments = []; // { file, id } before save
   let _pendingVoices      = []; // { id, duration }
@@ -172,9 +179,8 @@ const Transactions = (() => {
         <div class="form-group">
           <label class="form-label">Persona</label>
           <select id="txPerson2" class="form-select">
-            <option value="shared" ${(tx?.person||App.getUser())==='shared'?'selected':''}>🏠 Compartido</option>
-            <option value="karen"  ${tx?.person==='karen'?'selected':''}>👩 Karen</option>
-            <option value="miguel" ${tx?.person==='miguel'?'selected':''}>👨 Miguel</option>
+            <option value="karen"  ${(tx?.person || _myProfile())==='karen' ?'selected':''}>👩 Karen</option>
+            <option value="miguel" ${(tx?.person || _myProfile())==='miguel'?'selected':''}>👨 Miguel</option>
           </select>
         </div>
       </div>
@@ -313,7 +319,7 @@ const Transactions = (() => {
       description:      desc,
       amount,
       category:         document.getElementById('txCat')?.value      || 'Otros',
-      person:           document.getElementById('txPerson2')?.value  || 'shared',
+      person:           document.getElementById('txPerson2')?.value  || _myProfile(),
       date:             document.getElementById('txDate')?.value      || Utils.today(),
       paymentMethod:    document.getElementById('txMethod')?.value    || 'Efectivo',
       notes:            document.getElementById('txNotes')?.value     || '',

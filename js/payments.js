@@ -94,7 +94,7 @@ const Payments = (() => {
     for (const { file, id } of _spAttachments) { await DB.saveAttachment(id, file); attIds.push(id); }
     State.saveTransaction({
       id: Utils.uuid(), type: 'expense', description: 'Pago ' + name,
-      amount, category: 'Servicios', person: 'shared',
+      amount, category: 'Servicios', person: _myProfile(),
       date, paymentMethod: 'PSE', notes: '',
       recurring: false, tags: [], attachments: attIds, voiceNotes: [],
       createdAt: new Date().toISOString()
@@ -191,7 +191,7 @@ const Payments = (() => {
     for (const { file, aid } of _spAttachments) { await DB.saveAttachment(aid, file); attIds.push(aid); }
     State.saveTransaction({
       id: Utils.uuid(), type: 'expense', description: 'Pago ' + s.name,
-      amount, category: s.category || 'Servicios', person: 'shared',
+      amount, category: s.category || 'Servicios', person: _myProfile(),
       date, paymentMethod: 'PSE', notes: '',
       recurring: false, tags: [], attachments: attIds, voiceNotes: [],
       createdAt: new Date().toISOString()

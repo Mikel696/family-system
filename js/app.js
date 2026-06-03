@@ -172,7 +172,6 @@ const App = (() => {
         <div class="form-group">
           <label class="form-label">Persona</label>
           <select id="qaPerson" class="form-select">
-            <option value="shared">🏠 Compartido</option>
             <option value="karen">👩 Karen</option>
             <option value="miguel">👨 Miguel</option>
           </select>
@@ -184,7 +183,7 @@ const App = (() => {
       </div>`;
     openModal('Agregar Rápido', html);
     _qaSetType('income');
-    document.getElementById('qaPerson').value = currentUser !== 'shared' ? currentUser : 'shared';
+    document.getElementById('qaPerson').value = (typeof _myProfile === 'function') ? _myProfile() : (currentUser !== 'shared' ? currentUser : 'miguel');
   }
 
   let _qaType = 'income';
@@ -201,7 +200,7 @@ const App = (() => {
     const desc   = document.getElementById('qaDesc').value.trim();
     const amount = parseFloat(document.getElementById('qaAmount').value);
     const cat    = document.getElementById('qaCategory').value;
-    const person = document.getElementById('qaPerson').value;
+    const person = document.getElementById('qaPerson').value || (typeof _myProfile === 'function' ? _myProfile() : 'miguel');
     if (!desc || !amount) return toast('Completa descripción y monto', 'warning');
     const tx = {
       id: Utils.uuid(), type: _qaType, description: desc,

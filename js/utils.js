@@ -96,7 +96,7 @@ const Utils = (() => {
   }
 
   function personLabel(p) {
-    return { karen: '👩 Karen', miguel: '👨 Miguel', shared: '🏠 Hogar' }[p] || p;
+    return { karen: '👩 Karen', miguel: '👨 Miguel', shared: '🏠 Ambos' }[p] || p;
   }
 
   function priorityLabel(p) {
