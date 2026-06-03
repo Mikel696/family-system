@@ -103,6 +103,7 @@ const Payments = (() => {
     App.closeModal();
     App.toast('Pago registrado ✓', 'success');
     Alerts.check();
+    _refreshUI();
   }
 
   /* ---- Custom services list ---- */
@@ -199,6 +200,14 @@ const Payments = (() => {
     App.closeModal();
     App.toast('Pago registrado ✓', 'success');
     Alerts.check();
+    _refreshUI();
+  }
+
+  /* Refresca dashboard + lista de transacciones tras registrar un pago */
+  function _refreshUI() {
+    try { if (typeof Dashboard    !== 'undefined') Dashboard.render(); } catch(e) {}
+    try { if (typeof Transactions !== 'undefined') Transactions.filter(); } catch(e) {}
+    try { render(); } catch(e) {}
   }
 
   /* ---- Attachment helpers shared between prompts ---- */

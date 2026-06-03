@@ -331,6 +331,8 @@ const Debts = (() => {
     App.toast('Pago registrado ✓', 'success');
     Alerts.check();
     render();
+    try { if (typeof Dashboard    !== 'undefined') Dashboard.render(); } catch(e) {}
+    try { if (typeof Transactions !== 'undefined') Transactions.filter(); } catch(e) {}
   }
 
   function _delete(id) {
