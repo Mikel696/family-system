@@ -242,18 +242,14 @@ const App = (() => {
     document.getElementById('moreMenu').classList.toggle('open');
   }
 
-  /* Llama a DriveSync.init() en cuanto Google Identity Services esté disponible
-     (en lugar de esperar 1500 ms ciegamente). Así la sincronización arranca
-     prácticamente al instante después del login. */
+  /* Conecta con Supabase en cuanto el SDK esté cargado.
+     Sin OAuth, sin clicks: la app se sincroniza sola. */
   function _initDriveASAP() {
     let tries = 0;
     const tick = () => {
-      if (typeof DriveSync === 'undefined') return;
-      if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2) {
-        DriveSync.init();
-        return;
-      }
-      if (++tries < 40) setTimeout(tick, 250); // hasta 10 s
+      if (typeof Cloud === 'undefined') return;
+      if (typeof window.supabase !== 'undefined') { Cloud.init(); return; }
+      if (++tries < 40) setTimeout(tick, 250);
     };
     tick();
   }

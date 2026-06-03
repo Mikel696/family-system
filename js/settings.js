@@ -149,40 +149,31 @@ const Settings = (() => {
   }
 
   function _renderDriveSync() {
-    const connected = DriveSync.isConnected();
     const lastSync  = State.get('drive_last_sync');
     const lastError = DriveSync.getLastError ? DriveSync.getLastError() : '';
     const el        = document.getElementById('settingsDrive');
     if (!el) return;
     el.innerHTML = `
-      <p style="font-size:13px;color:var(--text-m);margin-bottom:6px">
-        Sincroniza tus datos entre el celular y el PC a través de tu Google Drive.
-      </p>
-      <p style="font-size:12px;color:var(--text-m);margin-bottom:14px">
-        ⚠️ Conéctate con la <b>misma cuenta de Google</b> en todos los dispositivos
-        para compartir la misma información.
+      <p style="font-size:13px;color:var(--text-m);margin-bottom:14px">
+        La app se sincroniza <b>automáticamente en tiempo real</b> entre todos
+        los dispositivos en cuanto inicias sesión. No tienes que hacer nada.
       </p>
       ${lastError ? `
         <div style="background:rgba(239,68,68,0.12);border:1px solid #EF4444;border-radius:10px;padding:12px;margin-bottom:12px">
-          <div style="color:#EF4444;font-weight:700;font-size:13px;margin-bottom:6px">⚠️ Problema con la sincronización</div>
+          <div style="color:#EF4444;font-weight:700;font-size:13px;margin-bottom:6px">⚠️ Problema temporal de sincronización</div>
           <div style="color:var(--text);font-size:12px;margin-bottom:10px">${Utils.escHtml(lastError)}</div>
-          <button class="btn-success" onclick="DriveSync.connect()">🔗 Reconectar con Google</button>
+          <button class="btn-success" onclick="DriveSync.connect()">🔄 Reintentar</button>
         </div>
       ` : ''}
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <span id="driveSyncDot" style="width:10px;height:10px;border-radius:50%;background:#6B7280;display:inline-block"></span>
-        <span id="driveSyncLabel" style="font-size:13px;color:var(--text-m)">${connected ? 'Conectado' : 'No conectado'}</span>
-        <span id="driveLastSync" style="font-size:11px;color:var(--text-s)">${lastSync ? 'Última sync: ' + Utils.formatDateTime(lastSync) : ''}</span>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <span id="driveSyncDot" style="width:10px;height:10px;border-radius:50%;background:#10B981;display:inline-block"></span>
+        <span id="driveSyncLabel" style="font-size:13px">Sincronizado</span>
+        <span id="driveLastSync" style="font-size:11px;color:var(--text-m)">${lastSync ? 'Última sync: ' + Utils.formatDateTime(lastSync) : ''}</span>
       </div>
       <div class="btn-group">
-        ${connected
-          ? `<button class="btn-success"  onclick="DriveSync.push()">🔄 Sincronizar ahora</button>
-             <button class="btn-outline"  onclick="DriveSync.pull()">⬇️ Descargar desde Drive</button>
-             <button class="btn-danger"   onclick="DriveSync.disconnect()">🔌 Desconectar</button>`
-          : `<button class="btn-success"  onclick="DriveSync.connect()">🔗 Conectar con Google</button>`
-        }
+        <button class="btn-outline" onclick="DriveSync.push()">⬆️ Forzar subir</button>
+        <button class="btn-outline" onclick="DriveSync.pull()">⬇️ Forzar bajar</button>
       </div>`;
-    // Restore dot color
     DriveSync._setStatus(DriveSync.getStatus());
   }
 
