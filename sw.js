@@ -1,4 +1,4 @@
-const CACHE   = 'family-system-v17';
+const CACHE   = 'family-system-v18';
 const ASSETS  = [
   './',
   './index.html',

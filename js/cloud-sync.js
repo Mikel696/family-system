@@ -1,39 +1,180 @@
 /* Cloud Sync — Supabase backend · Family System
- * Sincronización en tiempo real entre todos los dispositivos.
- * Sin OAuth, sin botones de "conectar Drive". La app se conecta sola.
- * Cada "documento" (transactions, savings, ...) se guarda como una fila
- * en la tabla family_data (columna data = JSONB).
+ *
+ * Diseño robusto con cola persistente ("outbox"):
+ *   - Cada State.set que cambia un doc lo marca como "dirty" en una cola
+ *     guardada en localStorage. Si la app se cierra o se cae internet, la cola
+ *     sobrevive y se procesa al recargar / al volver online.
+ *   - Un único procesador (_flush) recorre la cola en serie, hace pull-merge-push
+ *     y solo borra de la cola lo que subió OK.
+ *   - Reintenta automáticamente en: window 'online', visibilitychange, cada 15 s,
+ *     y al recibir cualquier nuevo cambio.
+ *   - Si una sesión expira o el token está mal, intenta refrescarla y reintenta.
+ *   - El badge de la nube refleja el estado real: pendientes, sync, OK o error.
  */
 const Cloud = (() => {
-  const TABLE = 'family_data';
+  const TABLE        = 'family_data';
+  const PENDING_KEY  = 'cloud_pending';
+  const RETRY_MS     = 15000;          // reintento automático cada 15 s si quedan pendientes
+  const DEBOUNCE_MS  = 600;            // tras un cambio, esperar 0.6 s antes del flush
+  const ARRAY_DOCS   = ['transactions','savings','debts','notes','tasklists','payment_services'];
 
-  let _client      = null;
-  let _channel     = null;
-  let _status      = 'disconnected';
-  let _pulling     = false;
-  let _lastTs      = {};    // docId → updated_at remoto procesado
-  let _pushTimers  = {};
-
-  // Documentos cuyo valor es un array de objetos con `id`
-  const ARRAY_DOCS = ['transactions','savings','debts','notes','tasklists','payment_services'];
+  let _client       = null;
+  let _channel      = null;
+  let _status       = 'disconnected';
+  let _pulling      = false;
+  let _processing   = false;
+  let _flushTimer   = null;
+  let _pending      = new Set();       // docIds pendientes de subir
+  let _lastTs       = {};              // docId → updated_at remoto procesado
 
   /* =================== INIT =================== */
   async function init(client) {
     _client = client || window.supabaseClient;
     if (!_client) { _setError('Cliente Supabase no disponible'); return; }
-    if (!await _ensureSession()) return;
+
+    // Cargar cola persistente
     try {
-      _setStatus('syncing');
+      const arr = State.get(PENDING_KEY, []);
+      if (Array.isArray(arr)) arr.forEach(d => _pending.add(d));
+    } catch(e) {}
+
+    if (!await _ensureSession()) return;
+
+    try {
+      _setStatus(_pending.size ? 'syncing' : 'syncing');
       await pullAll();
-      await pushAll();
+      // Tras el pull inicial, marcamos TODO como dirty una vez para subir lo local
+      // (esto cubre el escenario de un dispositivo nuevo con datos sin sincronizar).
+      _seedInitialDirty();
       _subscribe();
-      _setStatus('connected');
+      _flush();                         // procesa cola pendiente
+      _setStatus(_pending.size ? 'syncing' : 'connected');
       State.set('drive_last_sync', new Date().toISOString());
       State.set('drive_last_error', '');
     } catch (e) {
       console.error('Cloud init', e);
       _setError('No se pudo conectar a la nube: ' + (e.message || e));
     }
+  }
+
+  /* Si la cola está vacía pero local tiene datos sin reflejar arriba, los marcamos
+     dirty para asegurar que la primera carga los suba. */
+  function _seedInitialDirty() {
+    if (_pending.size > 0) return;
+    const localHas = (k, fn) => {
+      try { const v = fn(); return Array.isArray(v) ? v.length > 0 : !!v; } catch(e){ return false; }
+    };
+    if (localHas('transactions',   () => State.getTransactions()))    _pending.add('transactions');
+    if (localHas('savings',        () => State.getSavings()))         _pending.add('savings');
+    if (localHas('debts',          () => State.getDebts()))           _pending.add('debts');
+    if (localHas('notes',          () => State.getNotes()))           _pending.add('notes');
+    if (localHas('tasklists',      () => State.getTaskLists()))       _pending.add('tasklists');
+    if (localHas('payment_services',() => State.getPaymentServices())) _pending.add('payment_services');
+    _savePending();
+  }
+
+  /* =================== PENDING / OUTBOX =================== */
+  function _markDirty(docId) {
+    _pending.add(docId);
+    _savePending();
+    _scheduleFlush();
+    _setStatus('syncing');
+  }
+  function _savePending() {
+    try { State.set(PENDING_KEY, [..._pending]); } catch(e) {}
+  }
+  function _scheduleFlush() {
+    clearTimeout(_flushTimer);
+    _flushTimer = setTimeout(_flush, DEBOUNCE_MS);
+  }
+
+  /* Procesa la cola de pendientes. Si algo falla, deja en la cola para reintentar. */
+  async function _flush() {
+    if (_processing || !_client) return;
+    if (_pending.size === 0) { _setStatus('connected'); return; }
+    if (!await _ensureSession()) return;
+    _processing = true;
+    let anyFailed = false;
+    try {
+      // Tomar snapshot — la cola puede crecer durante el procesamiento
+      const docs = [..._pending];
+      for (const docId of docs) {
+        const ok = await _tryPushOne(docId);
+        if (ok) {
+          _pending.delete(docId);
+          _savePending();
+        } else {
+          anyFailed = true;
+          break; // si uno falla, paramos y reintentamos luego
+        }
+      }
+    } finally {
+      _processing = false;
+    }
+    if (_pending.size === 0 && !anyFailed) {
+      _setStatus('connected');
+      State.set('drive_last_sync', new Date().toISOString());
+      State.set('drive_last_error', '');
+    }
+  }
+
+  async function _tryPushOne(docId) {
+    try {
+      // Pull-merge: traer lo remoto antes de subir, para no pisar cambios ajenos
+      await _pullDocAndMerge(docId);
+      const value = _gatherDoc(docId);
+      if (value === undefined) return true;   // nada que subir
+      const updated_at = new Date().toISOString();
+      const { error } = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at });
+      if (error) {
+        if (/row-level security|policy/i.test(error.message || '')) {
+          // Sesión muerta — pedimos refresh y reintentamos una vez
+          const ok = await _tryRefreshSession();
+          if (ok) {
+            const retry = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at });
+            if (retry.error) { _setError('Sesión inválida. Vuelve a iniciar sesión.'); return false; }
+          } else {
+            _setError('Sesión expirada. Toca "Cerrar sesión y volver a entrar".');
+            return false;
+          }
+        } else {
+          _setError('Error al guardar: ' + error.message);
+          return false;
+        }
+      }
+      _lastTs[docId] = updated_at;
+      return true;
+    } catch(e) {
+      console.warn('tryPushOne', docId, e);
+      return false;
+    }
+  }
+
+  /* =================== AUTH =================== */
+  async function _ensureSession() {
+    if (!_client) return false;
+    try {
+      const { data: { session } } = await _client.auth.getSession();
+      if (!session || !session.user) {
+        // Intento de refresh antes de declarar muerta la sesión
+        const refreshed = await _tryRefreshSession();
+        if (!refreshed) {
+          _setError('Sesión expirada — toca "Cerrar sesión y volver a entrar".');
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      _setError('No se pudo verificar la sesión: ' + (e.message || e));
+      return false;
+    }
+  }
+
+  async function _tryRefreshSession() {
+    try {
+      const { data, error } = await _client.auth.refreshSession();
+      return !error && data && data.session;
+    } catch(e) { return false; }
   }
 
   /* =================== PULL =================== */
@@ -45,6 +186,19 @@ const Cloud = (() => {
     _pulling = true;
     try { data.forEach(row => _applyDoc(row.id, row.data, row.updated_at)); }
     finally { _pulling = false; }
+  }
+
+  async function _pullDocAndMerge(docId) {
+    if (!_client) return;
+    try {
+      const { data: rows } = await _client.from(TABLE).select('data, updated_at').eq('id', docId).limit(1);
+      if (!rows || rows.length === 0) return;
+      const row = rows[0];
+      if (_lastTs[docId] === row.updated_at) return;
+      _pulling = true;
+      try { _applyDoc(docId, row.data, row.updated_at); }
+      finally { _pulling = false; }
+    } catch(e) { console.warn('pullDocAndMerge', e); }
   }
 
   function _applyDoc(id, data, ts) {
@@ -72,9 +226,7 @@ const Cloud = (() => {
     }
   }
 
-  function _ts(x) {
-    return Date.parse((x && (x.updatedAt || x.createdAt)) || '') || 0;
-  }
+  function _ts(x) { return Date.parse((x && (x.updatedAt || x.createdAt)) || '') || 0; }
   function _mergeById(local, remote) {
     const map = {};
     (Array.isArray(local)  ? local  : []).forEach(x => { if (x && x.id) map[x.id] = x; });
@@ -84,67 +236,6 @@ const Cloud = (() => {
       if (!cur || _ts(x) >= _ts(cur)) map[x.id] = x;
     });
     return Object.values(map);
-  }
-
-  /* Verifica que haya sesión Supabase autenticada y autorizada antes de hablar con la BD */
-  async function _ensureSession() {
-    if (!_client) return false;
-    try {
-      const { data: { session } } = await _client.auth.getSession();
-      if (!session || !session.user) {
-        _setError('Sesión expirada — toca "Reconectar" para volver a entrar.');
-        return false;
-      }
-      const okEmails = ['miguel@family.local', 'karen@family.local'];
-      if (okEmails.indexOf(session.user.email) === -1) {
-        _setError('Sesión de un usuario no autorizado (' + session.user.email + '). Cierra sesión y vuelve a entrar.');
-        return false;
-      }
-      return true;
-    } catch (e) {
-      _setError('No se pudo verificar la sesión: ' + (e.message || e));
-      return false;
-    }
-  }
-
-  /* =================== PUSH =================== */
-  async function push(docId) {
-    if (!_client) return;
-    if (_gatherDoc(docId) === undefined) return;
-    if (!await _ensureSession()) return;     // sin sesión válida no intentamos (evita spam de errores)
-    // Pull-merge antes de cada push para que dos personas escribiendo a la vez
-    // no se pisen: traemos lo remoto, lo mergeamos con lo local, y subimos.
-    await _pullDocAndMerge(docId);
-    const value = _gatherDoc(docId);
-    if (value === undefined) return;
-    const updated_at = new Date().toISOString();
-    const { error } = await _client.from(TABLE).upsert({ id: docId, data: value, updated_at });
-    if (error) {
-      // Si es error de RLS, es problema de sesión — no spameamos
-      if (/row-level security|policy/i.test(error.message || '')) {
-        _setError('Sesión inválida. Pulsa "Reconectar" o cierra y vuelve a entrar.');
-      } else {
-        _setError('Error al guardar: ' + error.message);
-      }
-      return;
-    }
-    _lastTs[docId] = updated_at;
-    State.set('drive_last_sync', new Date().toISOString());
-    State.set('drive_last_error', '');
-    _setStatus('connected');
-  }
-
-  async function _pullDocAndMerge(docId) {
-    if (!_client) return;
-    try {
-      const { data: rows } = await _client.from(TABLE).select('data, updated_at').eq('id', docId).limit(1);
-      if (!rows || rows.length === 0) return;
-      const row = rows[0];
-      if (_lastTs[docId] === row.updated_at) return;
-      _pulling = true;
-      try { _applyDoc(docId, row.data, row.updated_at); }
-      finally { _pulling = false; }
-    } catch (e) { console.warn('pullDocAndMerge', e); }
   }
 
   function _gatherDoc(id) {
@@ -160,20 +251,6 @@ const Cloud = (() => {
     return undefined;
   }
 
-  async function pushAll() {
-    const docs = [
-      ...ARRAY_DOCS,
-      'profiles'
-    ];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.indexOf('karen_budget_') === 0) docs.push(k.slice(6));
-    }
-    for (const d of docs) {
-      try { await push(d); } catch (e) { console.warn('pushAll', d, e); }
-    }
-  }
-
   /* =================== REALTIME =================== */
   function _subscribe() {
     if (!_client) return;
@@ -183,20 +260,22 @@ const Cloud = (() => {
         try {
           const row = payload.new || payload.old;
           if (!row || !row.id) return;
-          if (_lastTs[row.id] === row.updated_at) return;   // mi propia escritura
+          if (_lastTs[row.id] === row.updated_at) return;  // mi propia escritura
           _pulling = true;
           try { _applyDoc(row.id, row.data, row.updated_at); }
           finally { _pulling = false; }
           _refreshCurrent();
-          if (typeof App !== 'undefined') App.toast('🔄 Sincronizado', 'info', 1500);
         } catch (e) { console.error('realtime', e); }
       })
       .subscribe(status => {
-        if (status === 'CHANNEL_ERROR') _setError('Tiempo real perdido — reconectando…');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // Intento de reconexión en próximo flush/visibility
+          console.warn('realtime channel:', status);
+        }
       });
   }
 
-  /* =================== UI =================== */
+  /* =================== UI / status =================== */
   function _setStatus(s) {
     _status = s;
     const el = document.getElementById('driveSyncDot');
@@ -206,7 +285,12 @@ const Cloud = (() => {
     }
     const lbl = document.getElementById('driveSyncLabel');
     if (lbl) {
-      const labels = { disconnected:'Conectando…', connected:'Sincronizado', syncing:'Sincronizando…', error:'⚠️ Error' };
+      const labels = {
+        disconnected:'Conectando…',
+        connected:'Sincronizado',
+        syncing: _pending.size > 0 ? ('Subiendo ' + _pending.size + '…') : 'Sincronizando…',
+        error:'⚠️ Reconectar'
+      };
       lbl.textContent = labels[s] || s;
     }
   }
@@ -216,9 +300,8 @@ const Cloud = (() => {
     console.error('Cloud error:', msg);
     State.set('drive_last_error', msg);
     _setStatus('error');
-    // No spamear toasts — máximo uno cada 6 segundos
     const now = Date.now();
-    if (typeof App !== 'undefined' && (now - _lastErrorAt) > 6000) {
+    if (typeof App !== 'undefined' && (now - _lastErrorAt) > 8000) {
       _lastErrorAt = now;
       App.toast('⚠️ ' + msg, 'error', 5000);
     }
@@ -230,17 +313,17 @@ const Cloud = (() => {
       const active = document.querySelector('.section.active');
       const id = active ? active.id.replace('sec-', '') : 'dashboard';
       const renders = {
-        dashboard:    () => Dashboard.render(),
+        dashboard: () => Dashboard.render(),
         transactions: () => Transactions.filter(),
-        savings:      () => Savings.render(),
-        debts:        () => Debts.render(),
-        budget:       () => Budget.render(),
-        notes:        () => Notes.render(),
-        tasks:        () => Tasks.render(),
-        calendar:     () => Calendar.render(),
-        payments:     () => Payments.render(),
-        reports:      () => Reports.render(),
-        settings:     () => Settings.render()
+        savings: () => Savings.render(),
+        debts: () => Debts.render(),
+        budget: () => Budget.render(),
+        notes: () => Notes.render(),
+        tasks: () => Tasks.render(),
+        calendar: () => Calendar.render(),
+        payments: () => Payments.render(),
+        reports: () => Reports.render(),
+        settings: () => Settings.render()
       };
       if (renders[id]) renders[id]();
       if (typeof Alerts !== 'undefined') Alerts.check();
@@ -248,44 +331,56 @@ const Cloud = (() => {
     } catch(e) { console.error('refresh', e); }
   }
 
-  /* Al volver al primer plano: traer cambios */
+  /* =================== TRIGGERS DE REINTENTO =================== */
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && _client) {
-      pullAll().then(() => _refreshCurrent());
+      pullAll().then(() => { _refreshCurrent(); _flush(); });
+    }
+  });
+  window.addEventListener('online', () => {
+    if (_client) _flush();
+  });
+  // Reintento periódico mientras haya pendientes
+  setInterval(() => { if (_client && _pending.size > 0) _flush(); }, RETRY_MS);
+  // Best-effort al cerrar pestaña (no garantizado pero ayuda)
+  window.addEventListener('beforeunload', () => {
+    if (_pending.size > 0) {
+      try { State.set(PENDING_KEY, [..._pending]); } catch(e) {}
     }
   });
 
-  /* =================== STATE.set INTERCEPTOR =================== */
+  /* =================== INTERCEPTOR STATE.set =================== */
   const _origSet = State.set.bind(State);
-  const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','drive_last_error','current_user','auth_users','auth_session','chat_last_read'];
-
-  function _scheduleDocPush(docId) {
-    clearTimeout(_pushTimers[docId]);
-    _setStatus('syncing');
-    _pushTimers[docId] = setTimeout(() => push(docId), 1500);
-  }
-
+  const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','drive_last_error','current_user','auth_users','auth_session','chat_last_read','cloud_pending'];
   State.set = function(key, value) {
     _origSet(key, value);
     if (_pulling) return;
-    if (!_client) return;
     if (_SKIP.indexOf(key) !== -1) return;
     let docId = null;
     if (ARRAY_DOCS.indexOf(key) !== -1) docId = key;
     else if (key === 'settings')          docId = 'profiles';
     else if (key === 'dismissed_alerts')  docId = 'dismissed_alerts';
     else if (key.indexOf('budget_') === 0) docId = key;
-    if (docId) _scheduleDocPush(docId);
+    if (docId) _markDirty(docId);
   };
 
-  /* =================== API pública =================== */
+  /* =================== API PÚBLICA =================== */
   function isConnected() { return !!_client; }
   function getStatus()   { return _status; }
   function getLastError(){ return State.get('drive_last_error', ''); }
+  function pendingCount(){ return _pending.size; }
 
   async function manualPush() {
     if (!_client) { App.toast('Aún conectándose…', 'info'); return; }
-    await pushAll();
+    // Marca TODO como dirty para forzar resubida
+    ['transactions','savings','debts','notes','tasklists','payment_services','profiles'].forEach(d => _pending.add(d));
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('karen_budget_') === 0) _pending.add(k.slice(6));
+    }
+    _savePending();
+    _setStatus('syncing');
+    await _flush();
     App.toast('Sincronizado ✓', 'success');
   }
   async function manualPull() {
@@ -299,13 +394,11 @@ const Cloud = (() => {
     init,
     push: manualPush,
     pull: manualPull,
-    isConnected, getStatus, getLastError,
+    isConnected, getStatus, getLastError, pendingCount,
     _setStatus,
-    // Compatibilidad con código viejo:
     connect:    () => init(),
     disconnect: () => App.toast('La nube se conecta automáticamente', 'info')
   };
 })();
 
-/* Alias para que el código que aún usa "DriveSync.xxx" siga funcionando */
 window.DriveSync = Cloud;
