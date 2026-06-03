@@ -5,8 +5,6 @@
  * en la tabla family_data (columna data = JSONB).
  */
 const Cloud = (() => {
-  const SUPABASE_URL  = 'https://swbbvtcbnycrvzryzndy.supabase.co';
-  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3YmJ2dGNibnljcnZ6cnl6bmR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDE5OTQsImV4cCI6MjA5NjAxNzk5NH0.970qYgcbeavU0MjM3UCyn8pjsBShstDrEpx6u3LgsN8';
   const TABLE = 'family_data';
 
   let _client      = null;
@@ -20,15 +18,10 @@ const Cloud = (() => {
   const ARRAY_DOCS = ['transactions','savings','debts','notes','tasklists','payment_services'];
 
   /* =================== INIT =================== */
-  async function init() {
-    if (typeof window.supabase === 'undefined') {
-      _setError('SDK de Supabase no cargado');
-      return;
-    }
+  async function init(client) {
+    _client = client || window.supabaseClient;
+    if (!_client) { _setError('Cliente Supabase no disponible'); return; }
     try {
-      _client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-        realtime: { params: { eventsPerSecond: 5 } }
-      });
       _setStatus('syncing');
       await pullAll();
       await pushAll();

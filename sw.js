@@ -1,4 +1,4 @@
-const CACHE   = 'family-system-v13';
+const CACHE   = 'family-system-v14';
 const ASSETS  = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const ASSETS  = [
   './js/auth.js',
   './js/alerts.js',
   './js/cloud-sync.js',
+  './js/chat.js',
   './js/dashboard.js',
   './js/transactions.js',
   './js/savings.js',

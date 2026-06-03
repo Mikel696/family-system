@@ -1,84 +1,58 @@
-/* Auth — Candado de acceso local · Family System
- * Sin emails. Solo perfil + contraseña por dispositivo.
- * La contraseña nunca sale del equipo (hash PBKDF2-SHA256).
+/* Auth — Supabase Auth real · Family System
+ * Cada perfil (Miguel, Karen) es un usuario real de Supabase con su contraseña.
+ * Sin login válido → no hay sesión Supabase → RLS bloquea TODO acceso a datos.
  */
 const Auth = (() => {
+  const SUPABASE_URL  = 'https://swbbvtcbnycrvzryzndy.supabase.co';
+  const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3YmJ2dGNibnljcnZ6cnl6bmR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDE5OTQsImV4cCI6MjA5NjAxNzk5NH0.970qYgcbeavU0MjM3UCyn8pjsBShstDrEpx6u3LgsN8';
   const PROFILES = {
-    miguel: { label: 'Miguel', avatar: '👨' },
-    karen:  { label: 'Karen',  avatar: '👩' }
+    miguel: { label: 'Miguel', avatar: '👨', email: 'miguel@family.local' },
+    karen:  { label: 'Karen',  avatar: '👩', email: 'karen@family.local' }
   };
-  const SESSION_HOURS = 24;
   const MIN_LEN = 4;
-  let _selected = null;
+  let _selected        = null;
+  let _client          = null;
+  let _currentProfile  = null;   // perfil de la sesión activa (miguel | karen)
 
-  function _users()      { return State.get('auth_users', {}); }
-  function _saveUsers(u) { State.set('auth_users', u); }
-  function _session()    { return State.get('auth_session', null); }
+  function _emailFor(p) { return PROFILES[p] && PROFILES[p].email; }
+  function _profileFromEmail(e) {
+    for (const k of Object.keys(PROFILES)) if (PROFILES[k].email === e) return k;
+    return null;
+  }
 
-  /* Migración silenciosa: usuarios viejos por email → keys de perfil */
-  function _migrate() {
-    const u = _users();
-    const oldEmails = {
-      'miguelbarros2416@gmail.com':  'miguel',
-      'avendanozabaletak@gmail.com': 'karen'
-    };
-    let changed = false;
-    Object.keys(oldEmails).forEach(email => {
-      const profile = oldEmails[email];
-      if (u[email] && !u[profile]) {
-        u[profile] = { profile, salt: u[email].salt, hash: u[email].hash, createdAt: u[email].createdAt };
-        delete u[email];
-        changed = true;
-      }
+  async function init() {
+    if (typeof window.supabase === 'undefined') { setTimeout(init, 250); return; }
+    _client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+      auth: { persistSession: true, autoRefreshToken: true, storage: window.localStorage }
     });
-    const s = _session();
-    if (s && s.email && oldEmails[s.email]) {
-      State.set('auth_session', { profile: oldEmails[s.email], ts: s.ts });
-    }
-    if (changed) _saveUsers(u);
-  }
-
-  function _randHex(n) {
-    const a = new Uint8Array(n); crypto.getRandomValues(a);
-    return [...a].map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-  async function _hash(password, saltHex) {
-    const enc  = new TextEncoder();
-    const salt = Uint8Array.from(saltHex.match(/../g).map(h => parseInt(h, 16)));
-    const km   = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
-    const bits = await crypto.subtle.deriveBits(
-      { name: 'PBKDF2', salt, iterations: 120000, hash: 'SHA-256' }, km, 256);
-    return [...new Uint8Array(bits)].map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  function _sessionValid() {
-    const s = _session();
-    if (!s || !s.profile || !s.ts || !PROFILES[s.profile]) return false;
-    return (Date.now() - s.ts) < SESSION_HOURS * 3600 * 1000;
-  }
-
-  function init() {
-    _migrate();
-    if (_sessionValid()) _enterApp(_session().profile);
-    else _renderPicker();
+    window.supabaseClient = _client;
+    try {
+      const { data: { session } } = await _client.auth.getSession();
+      if (session && session.user) {
+        const profile = _profileFromEmail(session.user.email);
+        if (profile) { _enterApp(profile); return; }
+      }
+    } catch(e) { console.warn('auth getSession', e); }
+    _renderPicker();
   }
 
   function _enterApp(profile) {
+    _currentProfile = profile;
     const ls = document.getElementById('loginScreen');
     if (ls) ls.style.display = 'none';
     const app = document.getElementById('app');
     if (app) app.style.display = '';
-    const bn = document.querySelector('.bottom-nav');
-    if (bn) bn.style.removeProperty('display');
     const fab = document.querySelector('.fab');
     if (fab) fab.style.removeProperty('display');
     if (!window.__appStarted) { window.__appStarted = true; App.init(); }
-    if (PROFILES[profile] && typeof App !== 'undefined') App.switchUser(profile);
+    if (typeof App !== 'undefined') App.switchUser(profile);
+    if (typeof Cloud !== 'undefined') Cloud.init(_client);
+    if (typeof Chat  !== 'undefined') Chat.init(_client, profile);
   }
 
-  function logout() {
-    if (!confirm('¿Cerrar sesión? Tendrás que ingresar tu contraseña de nuevo.')) return;
-    State.set('auth_session', null);
+  async function logout() {
+    if (!confirm('¿Cerrar sesión?')) return;
+    try { if (_client) await _client.auth.signOut(); } catch(e) {}
     location.reload();
   }
 
@@ -86,21 +60,19 @@ const Auth = (() => {
 
   function _renderPicker() {
     _selected = null;
-    const users = _users();
     _screen().innerHTML = `
       <div class="login-box">
         <div class="login-logo">💜</div>
         <h1 class="login-title">Family System</h1>
-        <p class="login-sub">Selecciona tu perfil para continuar</p>
+        <p class="login-sub">Selecciona tu perfil</p>
         <div class="login-profiles">
           ${Object.entries(PROFILES).map(([key, u]) => `
             <button class="login-profile" onclick="Auth.pick('${key}')">
               <span class="login-profile-av">${u.avatar}</span>
               <span class="login-profile-name">${u.label}</span>
-              <span class="login-profile-state">${users[key] ? '🔒 Con contraseña' : '✨ Primer ingreso'}</span>
             </button>`).join('')}
         </div>
-        <p class="login-foot">🔐 Acceso protegido en este dispositivo</p>
+        <p class="login-foot">🔐 Acceso seguro · autenticación real</p>
       </div>`;
     _screen().style.display = 'flex';
   }
@@ -109,67 +81,58 @@ const Auth = (() => {
     _selected = profile;
     const p = PROFILES[profile];
     if (!p) return;
-    const exists = !!_users()[profile];
     _screen().innerHTML = `
       <div class="login-box">
         <div class="login-logo">${p.avatar}</div>
         <h1 class="login-title">Hola, ${p.label}</h1>
-        ${exists ? `
-          <input type="password" id="loginPass" class="login-input" placeholder="Tu contraseña"
-            onkeydown="if(event.key==='Enter')Auth.submit()">
-          <div class="login-err" id="loginErr"></div>
-          <button class="login-btn" onclick="Auth.submit()">Entrar</button>
-        ` : `
-          <p class="login-hint">Primer ingreso — crea tu contraseña (mínimo ${MIN_LEN} caracteres)</p>
-          <input type="password" id="loginPass" class="login-input" placeholder="Crea una contraseña">
-          <input type="password" id="loginPass2" class="login-input" placeholder="Repite la contraseña"
-            onkeydown="if(event.key==='Enter')Auth.submit()">
-          <div class="login-err" id="loginErr"></div>
-          <button class="login-btn" onclick="Auth.submit()">Crear y entrar</button>
-        `}
+        <input type="password" id="loginPass" class="login-input" placeholder="Tu contraseña" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter')Auth.submit()">
+        <div class="login-err" id="loginErr"></div>
+        <button class="login-btn" onclick="Auth.submit()">Entrar</button>
+        <p class="login-hint">Primera vez en cualquier dispositivo: la contraseña que escribas será la tuya (mínimo ${MIN_LEN} caracteres).</p>
         <button class="login-back" onclick="Auth._renderPicker()">← Cambiar de perfil</button>
       </div>`;
     setTimeout(() => { const i = document.getElementById('loginPass'); if (i) i.focus(); }, 120);
   }
 
-  function _err(msg) {
+  function _err(msg, color) {
     const el = document.getElementById('loginErr');
-    if (el) el.textContent = msg || '';
-  }
-
-  async function submit() {
-    const profile = _selected;
-    if (!profile || !PROFILES[profile]) return;
-    const pass = (document.getElementById('loginPass') || {}).value || '';
-    const users = _users();
-    const rec   = users[profile];
-    try {
-      if (rec) {
-        const h = await _hash(pass, rec.salt);
-        if (h === rec.hash) _grant(profile);
-        else _err('Contraseña incorrecta');
-      } else {
-        const pass2 = (document.getElementById('loginPass2') || {}).value || '';
-        if (pass.length < MIN_LEN) { _err('La contraseña debe tener al menos ' + MIN_LEN + ' caracteres'); return; }
-        if (pass !== pass2)        { _err('Las contraseñas no coinciden'); return; }
-        const salt = _randHex(16);
-        const hash = await _hash(pass, salt);
-        users[profile] = { profile, salt, hash, createdAt: new Date().toISOString() };
-        _saveUsers(users);
-        _grant(profile);
-      }
-    } catch (e) {
-      console.error('Auth submit', e);
-      _err('Ocurrió un error. Intenta de nuevo.');
+    if (el) {
+      el.textContent = msg || '';
+      el.style.color = color || '#EF4444';
     }
   }
 
-  function _grant(profile) {
-    State.set('auth_session', { profile, ts: Date.now() });
+  async function submit() {
+    const profile  = _selected;
+    if (!profile || !PROFILES[profile]) return;
+    const password = (document.getElementById('loginPass') || {}).value || '';
+    if (password.length < MIN_LEN) { _err('Mínimo ' + MIN_LEN + ' caracteres'); return; }
+    if (!_client) { _err('La nube no está cargada. Recarga la página.'); return; }
+    const email = _emailFor(profile);
+    _err('Verificando…', '#9B8FC4');
+    let res = await _client.auth.signInWithPassword({ email, password });
+    if (res.error) {
+      // Si no existe, lo creamos (primer ingreso global de ese perfil)
+      if (/invalid|credentials|email not confirmed/i.test(res.error.message || '')) {
+        const su = await _client.auth.signUp({ email, password });
+        if (su.error) { _err('No se pudo crear: ' + su.error.message); return; }
+        if (!su.data || !su.data.session) {
+          const re = await _client.auth.signInWithPassword({ email, password });
+          if (re.error) { _err('Contraseña incorrecta'); return; }
+        }
+        _enterApp(profile);
+      } else {
+        _err(res.error.message);
+      }
+      return;
+    }
     _enterApp(profile);
   }
 
-  function currentProfile() { return _sessionValid() ? _session().profile : null; }
+  function currentProfile() {
+    return _currentProfile || _selected;
+  }
 
   return { init, pick, submit, logout, currentProfile, _renderPicker };
 })();

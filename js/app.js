@@ -31,8 +31,7 @@ const App = (() => {
     navigate('dashboard');
     _requestNotifPermission();
 
-    // Conectar Drive lo antes posible — esperamos sólo a que GIS esté listo
-    _initDriveASAP();
+    // Cloud y Chat se inician desde Auth (tras login)
 
     // Drive sync pill click → settings
     document.getElementById('driveSyncPill')?.addEventListener('click', () => navigate('settings'));
@@ -240,18 +239,6 @@ const App = (() => {
 
   function toggleMoreMenu() {
     document.getElementById('moreMenu').classList.toggle('open');
-  }
-
-  /* Conecta con Supabase en cuanto el SDK esté cargado.
-     Sin OAuth, sin clicks: la app se sincroniza sola. */
-  function _initDriveASAP() {
-    let tries = 0;
-    const tick = () => {
-      if (typeof Cloud === 'undefined') return;
-      if (typeof window.supabase !== 'undefined') { Cloud.init(); return; }
-      if (++tries < 40) setTimeout(tick, 250);
-    };
-    tick();
   }
 
   function _requestNotifPermission() {

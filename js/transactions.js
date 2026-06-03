@@ -124,6 +124,31 @@ const Transactions = (() => {
     const tx = id ? State.getTransactions().find(t => t.id === id) : null;
     const cats = Utils.TX_CATEGORIES;
 
+    // 🔒 Protección de ownership: si el item pertenece al otro perfil, solo lectura + sugerencia
+    if (tx && tx.person && tx.person !== 'shared') {
+      const me = (typeof Auth !== 'undefined' && Auth.currentProfile && Auth.currentProfile()) || App.getUser();
+      if (me && me !== 'shared' && tx.person !== me) {
+        const owner = tx.person === 'karen' ? '👩 Karen' : '👨 Miguel';
+        App.openModal('🔒 Transacción de ' + owner, `
+          <p style="color:var(--text-m);font-size:13px;margin-bottom:14px">
+            Esta transacción es de <b>${owner}</b>. Solo el dueño puede editarla.
+            Tú puedes enviarle una <b>sugerencia</b> por el chat 💬.
+          </p>
+          <div class="card" style="background:var(--bg3);padding:14px;margin-bottom:14px">
+            <div style="font-weight:700;font-size:15px">${Utils.escHtml(tx.description)}</div>
+            <div style="color:var(--text-m);font-size:12px;margin-top:4px">${Utils.formatDate(tx.date)} · ${Utils.escHtml(tx.category||'')}</div>
+            <div style="font-size:18px;font-weight:700;color:${tx.type==='income'?'var(--success)':'var(--danger)'};margin-top:6px">
+              ${tx.type==='income'?'+':'-'} ${Utils.formatCurrency(tx.amount)}
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn-outline" onclick="App.closeModal()">Cerrar</button>
+            <button class="btn-primary" onclick="App.closeModal();Chat.sendSuggestion('transaction','${tx.id}','${Utils.escHtml((tx.description||'').replace(/'/g,'\\\\\\''))} ')">💡 Sugerir cambio</button>
+          </div>`);
+        return;
+      }
+    }
+
     const html = `
       <div class="radio-group" style="margin-bottom:16px">
         <label class="radio-chip ${!tx||tx.type==='income'?'checked':''}" id="txTypeIncome" onclick="Transactions._setType('income')"><span>📈 Ingreso</span></label>
