@@ -1579,32 +1579,47 @@ canvas { max-width: 100%; }
 .tx-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #reportSummaryTable { overflow-x: auto; }
 
-/* ===== Cards por persona (dashboard) ===== */
-.person-stat-row {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+/* ===== Cards por persona (dashboard) — una fila por persona ===== */
+.person-stats-wrap {
+  display: flex; flex-direction: column; gap: 10px;
   margin-bottom: 18px;
 }
-.person-stat-card {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 12px;
+.person-stat-row {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr 1fr;
+  gap: 10px;
+  align-items: stretch;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 12px;
-  cursor: pointer;
-  transition: transform .15s, border-color .15s, box-shadow .15s;
-  min-width: 0;
+  padding: 8px 10px;
 }
-.person-stat-card:hover { transform: translateY(-2px); border-color: var(--primary); }
-.person-stat-card.karen  { border-left: 3px solid #EC4899; }
-.person-stat-card.miguel { border-left: 3px solid #3B82F6; }
-.person-stat-card .ps-icon  { font-size: 22px; flex-shrink: 0; }
-.person-stat-card .ps-body  { min-width: 0; overflow: hidden; }
-.person-stat-card .ps-label { font-size: 10px; color: var(--text-m); text-transform: uppercase; letter-spacing: 0.05em; }
-.person-stat-card .ps-value { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 900px) { .person-stat-row { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 420px) { .person-stat-row { grid-template-columns: 1fr; } }
+.person-stat-row.karen  { border-left: 3px solid #EC4899; }
+.person-stat-row.miguel { border-left: 3px solid #3B82F6; }
+.person-stat-row .ps-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 4px;
+  min-width: 80px;
+}
+.person-stat-row .ps-avatar { font-size: 22px; }
+.person-stat-row .ps-name   { font-size: 12px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: .04em; }
+.person-stat-row .ps-cell {
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 4px 8px;
+  cursor: pointer; border-radius: 8px;
+  min-width: 0;
+  transition: background .15s;
+}
+.person-stat-row .ps-cell:hover { background: var(--bg3); }
+.person-stat-row .ps-label { font-size: 10px; color: var(--text-m); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2px; }
+.person-stat-row .ps-value { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 560px) {
+  .person-stat-row { grid-template-columns: auto 1fr 1fr 1fr; gap: 4px; padding: 6px 8px; }
+  .person-stat-row .ps-head { min-width: 0; padding: 4px; }
+  .person-stat-row .ps-name { display: none; }
+  .person-stat-row .ps-value { font-size: 12px; }
+  .person-stat-row .ps-label { font-size: 9px; }
+}
 
 /* ===== Chat flotante ===== */
 .chat-fab {
