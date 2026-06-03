@@ -301,42 +301,49 @@ const Transactions = (() => {
   }
 
   async function save() {
-    const desc   = document.getElementById('txDesc')?.value.trim();
-    const amount = parseFloat(document.getElementById('txAmount')?.value);
-    if (!desc || !amount) { App.toast('Completa descripción y monto', 'warning'); return; }
+    try {
+      const desc   = (document.getElementById('txDesc')?.value || '').trim();
+      const amount = parseFloat(document.getElementById('txAmount')?.value);
+      if (!desc)            { App.toast('Falta la descripción', 'warning'); return; }
+      if (!amount || isNaN(amount) || amount <= 0) { App.toast('Falta un monto válido', 'warning'); return; }
 
-    // Save attachments to IndexedDB
-    const attIds = [];
-    for (const { file, id } of _pendingAttachments) {
-      await DB.saveAttachment(id, file);
-      attIds.push(id);
+      // Save attachments to IndexedDB (no rompemos el save si alguno falla)
+      const attIds = [];
+      for (const { file, id } of _pendingAttachments) {
+        try { await DB.saveAttachment(id, file); attIds.push(id); }
+        catch(e) { console.error('attachment fail', e); }
+      }
+
+      const existing = _editId ? State.getTransactions().find(t=>t.id===_editId) : null;
+      const tx = {
+        id:               _editId || Utils.uuid(),
+        type:             _txType,
+        description:      desc,
+        amount,
+        category:         document.getElementById('txCat')?.value      || 'Otros',
+        person:           document.getElementById('txPerson2')?.value  || _myProfile(),
+        date:             document.getElementById('txDate')?.value      || Utils.today(),
+        paymentMethod:    document.getElementById('txMethod')?.value    || 'Efectivo',
+        notes:            document.getElementById('txNotes')?.value     || '',
+        recurring:        !!document.getElementById('txRecurring')?.checked,
+        recurringInterval: document.getElementById('txRecurInterval')?.value || 'monthly',
+        nextDue:          document.getElementById('txNextDue')?.value   || '',
+        attachments:      [...(existing?.attachments||[]), ...attIds],
+        voiceNotes:       [...(existing?.voiceNotes||[]), ..._pendingVoices],
+        tags:             existing?.tags || [],
+        createdAt:        existing?.createdAt || new Date().toISOString(),
+        updatedAt:        new Date().toISOString()
+      };
+      State.saveTransaction(tx);
+      _pendingAttachments = []; _pendingVoices = []; _editId = null;
+      App.closeModal();
+      App.toast(existing ? 'Transacción actualizada ✓' : 'Transacción guardada ✓', 'success');
+      try { filter(); } catch(e) { console.error('filter()', e); }
+      try { if (typeof Dashboard !== 'undefined') Dashboard.render(); } catch(e) { console.error('Dashboard.render()', e); }
+    } catch (err) {
+      console.error('Transactions.save error:', err);
+      App.toast('❌ Error al guardar: ' + (err.message || err), 'error', 6000);
     }
-
-    const existing = _editId ? State.getTransactions().find(t=>t.id===_editId) : null;
-    const tx = {
-      id:               _editId || Utils.uuid(),
-      type:             _txType,
-      description:      desc,
-      amount,
-      category:         document.getElementById('txCat')?.value      || 'Otros',
-      person:           document.getElementById('txPerson2')?.value  || _myProfile(),
-      date:             document.getElementById('txDate')?.value      || Utils.today(),
-      paymentMethod:    document.getElementById('txMethod')?.value    || 'Efectivo',
-      notes:            document.getElementById('txNotes')?.value     || '',
-      recurring:        document.getElementById('txRecurring')?.checked || false,
-      recurringInterval: document.getElementById('txRecurInterval')?.value || 'monthly',
-      nextDue:          document.getElementById('txNextDue')?.value   || '',
-      attachments:      [...(existing?.attachments||[]), ...attIds],
-      voiceNotes:       [...(existing?.voiceNotes||[]), ..._pendingVoices],
-      tags:             existing?.tags || [],
-      createdAt:        existing?.createdAt || new Date().toISOString(),
-      updatedAt:        new Date().toISOString()
-    };
-    State.saveTransaction(tx);
-    App.closeModal();
-    App.toast(_editId ? 'Transacción actualizada' : 'Transacción guardada', 'success');
-    filter();
-    Dashboard.render();
   }
 
   function _delete(id) {
