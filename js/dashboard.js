@@ -7,7 +7,6 @@ const Dashboard = (() => {
     const txs    = _filterByPeriod(State.getTransactions(), period);
     _renderHero();
     _renderStats(txs);
-    _renderCharts(txs, period);
     _renderUpcoming();
     _renderSavings();
     _renderRecent(txs);
@@ -64,35 +63,35 @@ const Dashboard = (() => {
     const rate    = income > 0 ? Math.round(((income - expense) / income) * 100) : 0;
 
     document.getElementById('dashStats').innerHTML = `
-      <div class="stat-card income">
+      <div class="stat-card income" style="cursor:pointer" onclick="App.navigate('transactions', { type:'income' })">
         <div class="stat-icon">💚</div>
         <div class="stat-label">Ingresos</div>
         <div class="stat-value text-success">${Utils.formatCurrency(income)}</div>
-        <div class="stat-sub">${txs.filter(t=>t.type==='income').length} transacciones</div>
+        <div class="stat-sub">${txs.filter(t=>t.type==='income').length} registros · ver detalle ▸</div>
       </div>
-      <div class="stat-card expense">
+      <div class="stat-card expense" style="cursor:pointer" onclick="App.navigate('transactions', { type:'expense' })">
         <div class="stat-icon">❤️</div>
         <div class="stat-label">Gastos</div>
         <div class="stat-value text-danger">${Utils.formatCurrency(expense)}</div>
-        <div class="stat-sub">${txs.filter(t=>t.type==='expense').length} transacciones</div>
+        <div class="stat-sub">${txs.filter(t=>t.type==='expense').length} registros · ver detalle ▸</div>
       </div>
-      <div class="stat-card net">
+      <div class="stat-card net" style="cursor:pointer" onclick="App.navigate('transactions')">
         <div class="stat-icon">${net>=0?'📈':'📉'}</div>
         <div class="stat-label">Saldo Neto</div>
         <div class="stat-value ${net>=0?'text-success':'text-danger'}">${net<0?'- ':''}${Utils.formatCurrency(Math.abs(net))}</div>
-        <div class="stat-sub ${rate>=0?'stat-trend up':'stat-trend down'}">${rate>=0?'▲':'▼'} ${Math.abs(rate)}% tasa ahorro</div>
+        <div class="stat-sub">${rate>=0?'▲':'▼'} ${Math.abs(rate)}% · ver detalle ▸</div>
       </div>
-      <div class="stat-card savings">
+      <div class="stat-card savings" style="cursor:pointer" onclick="App.navigate('savings')">
         <div class="stat-icon">🎯</div>
-        <div class="stat-label">Ahorros Totales</div>
+        <div class="stat-label">Ahorros</div>
         <div class="stat-value text-primary">${Utils.formatCurrency(savings)}</div>
-        <div class="stat-sub">${State.getSavings().length} metas activas</div>
+        <div class="stat-sub">${State.getSavings().length} metas · ver detalle ▸</div>
       </div>
-      <div class="stat-card debt">
+      <div class="stat-card debt" style="cursor:pointer" onclick="App.navigate('debts')">
         <div class="stat-icon">💳</div>
-        <div class="stat-label">Deudas Pendientes</div>
+        <div class="stat-label">Deudas</div>
         <div class="stat-value text-warning">${Utils.formatCurrency(debt)}</div>
-        <div class="stat-sub">${State.getDebts().filter(d=>d.status!=='paid').length} deudas activas</div>
+        <div class="stat-sub">${State.getDebts().filter(d=>d.status!=='paid').length} pendientes · ver detalle ▸</div>
       </div>`;
   }
 

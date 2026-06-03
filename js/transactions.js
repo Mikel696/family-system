@@ -337,7 +337,7 @@ const Transactions = (() => {
       State.saveTransaction(tx);
       _pendingAttachments = []; _pendingVoices = []; _editId = null;
       App.closeModal();
-      App.toast(existing ? 'Transacción actualizada ✓' : 'Transacción guardada ✓', 'success');
+      App.toast((existing ? 'Transacción actualizada ✓' : 'Transacción guardada ✓') + ' — sincronizando…', 'success', 4000);
       try { filter(); } catch(e) { console.error('filter()', e); }
       try { if (typeof Dashboard !== 'undefined') Dashboard.render(); } catch(e) { console.error('Dashboard.render()', e); }
     } catch (err) {

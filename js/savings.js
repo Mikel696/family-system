@@ -143,26 +143,34 @@ const Savings = (() => {
   }
 
   function save(id) {
-    const name   = document.getElementById('savName')?.value.trim();
-    const target = parseFloat(document.getElementById('savTarget')?.value);
-    if (!name || !target) { App.toast('Completa nombre y objetivo', 'warning'); return; }
-    const existing = id ? State.getSavings().find(x=>x.id===id) : null;
-    const g = {
-      id:            id || Utils.uuid(),
-      name,
-      description:   document.getElementById('savDesc')?.value || '',
-      targetAmount:  target,
-      currentAmount: parseFloat(document.getElementById('savCurrent')?.value)||0,
-      deadline:      document.getElementById('savDeadline')?.value || '',
-      icon:          document.getElementById('savIcon')?.value || '🎯',
-      color:         document.getElementById('savColor')?.value || Utils.COLORS[0],
-      contributions: existing?.contributions || [],
-      createdAt:     existing?.createdAt || new Date().toISOString()
-    };
-    State.saveSaving(g);
-    App.closeModal();
-    App.toast(id?'Meta actualizada':'Meta creada','success');
-    render();
+    try {
+      const name   = (document.getElementById('savName')?.value || '').trim();
+      const target = parseFloat(document.getElementById('savTarget')?.value);
+      if (!name)   { App.toast('Falta el nombre', 'warning'); return; }
+      if (!target || isNaN(target) || target <= 0) { App.toast('Falta un objetivo válido', 'warning'); return; }
+      const existing = id ? State.getSavings().find(x=>x.id===id) : null;
+      const g = {
+        id:            id || Utils.uuid(),
+        name,
+        description:   document.getElementById('savDesc')?.value || '',
+        targetAmount:  target,
+        currentAmount: parseFloat(document.getElementById('savCurrent')?.value) || 0,
+        deadline:      document.getElementById('savDeadline')?.value || '',
+        icon:          document.getElementById('savIcon')?.value || '🎯',
+        color:         document.getElementById('savColor')?.value || Utils.COLORS[0],
+        contributions: existing?.contributions || [],
+        createdAt:     existing?.createdAt || new Date().toISOString(),
+        updatedAt:     new Date().toISOString()   // ⚠️ necesario para que el merge no lo descarte
+      };
+      State.saveSaving(g);
+      App.closeModal();
+      App.toast(existing ? 'Meta actualizada ✓ — sincronizando…' : 'Meta creada ✓ — sincronizando…', 'success');
+      try { render(); } catch(e) { console.error('render', e); }
+      try { if (typeof Dashboard !== 'undefined') Dashboard.render(); } catch(e) {}
+    } catch (err) {
+      console.error('Savings.save error:', err);
+      App.toast('❌ Error al guardar: ' + (err.message || err), 'error', 6000);
+    }
   }
 
   function addContribution(id) {

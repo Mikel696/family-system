@@ -136,17 +136,6 @@
 
         <div class="stats-grid" id="dashStats"></div>
 
-        <div class="dash-grid">
-          <div class="card">
-            <div class="card-header"><h3>Flujo Mensual</h3></div>
-            <canvas id="dashFlowChart" height="200"></canvas>
-          </div>
-          <div class="card">
-            <div class="card-header"><h3>Gastos por Categoría</h3></div>
-            <canvas id="dashCategoryChart" height="200"></canvas>
-          </div>
-        </div>
-
         <div class="dash-grid-2">
           <div class="card">
             <div class="card-header">
@@ -176,7 +165,7 @@
       <section id="sec-transactions" class="section">
         <div class="section-header">
           <h2>Transacciones</h2>
-          <button class="btn-primary" onclick="Transactions.openModal()">+ Nueva</button>
+          <span style="font-size:12px;color:var(--text-m)">Solo lectura — registra con el botón ➕ del menú superior</span>
         </div>
         <div class="filters-bar">
           <input type="text" id="txSearch" placeholder="🔍 Buscar..." oninput="Transactions.filter()" class="input-search">

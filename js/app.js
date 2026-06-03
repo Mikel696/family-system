@@ -37,7 +37,15 @@ const App = (() => {
     document.getElementById('driveSyncPill')?.addEventListener('click', () => navigate('settings'));
   }
 
-  function navigate(section) {
+  function navigate(section, opts) {
+    // Pre-filtros opcionales (ej. al venir de las stat-cards del dashboard)
+    if (opts && typeof opts === 'object') {
+      if (section === 'transactions') {
+        const t = document.getElementById('txType');     if (t && opts.type)     t.value = opts.type;
+        const p = document.getElementById('txPerson');   if (p && opts.person)   p.value = opts.person;
+        const c = document.getElementById('txCategory'); if (c && opts.category) c.value = opts.category;
+      }
+    }
     document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
     document.querySelectorAll('.nav-item, .bnav-item').forEach(el => {
       el.classList.toggle('active', el.dataset.section === section);
@@ -211,7 +219,7 @@ const App = (() => {
     };
     State.saveTransaction(tx);
     closeModal();
-    toast(_qaType === 'income' ? 'Ingreso registrado ✓' : 'Gasto registrado ✓', 'success');
+    toast((_qaType === 'income' ? 'Ingreso registrado ✓' : 'Gasto registrado ✓') + ' — sincronizando…', 'success', 4000);
     if (currentSection === 'dashboard') Dashboard.render();
     if (currentSection === 'transactions') Transactions.filter();
   }
