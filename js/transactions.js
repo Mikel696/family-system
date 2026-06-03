@@ -143,7 +143,7 @@ const Transactions = (() => {
           </div>
           <div class="form-actions">
             <button class="btn-outline" onclick="App.closeModal()">Cerrar</button>
-            <button class="btn-primary" onclick="App.closeModal();Chat.sendSuggestion('transaction','${tx.id}','${Utils.escHtml((tx.description||'').replace(/'/g,'\\\\\\''))} ')">💡 Sugerir cambio</button>
+            <button class="btn-primary" onclick="App.closeModal();Chat.sendSuggestion('transaction','${tx.id}')">💡 Sugerir cambio</button>
           </div>`);
         return;
       }

@@ -134,7 +134,16 @@ const Chat = (() => {
   /* Envía una sugerencia con referencia a un item de otra persona */
   async function sendSuggestion(type, id, label) {
     if (!_client) return;
-    const text = prompt('Sugerencia para "' + label + '":');
+    // Si no se pasa label, lo buscamos según el tipo
+    if (!label) {
+      if (type === 'transaction') {
+        const tx = State.getTransactions().find(t => t.id === id);
+        label = tx ? (tx.description + ' — ' + (tx.amount||0)) : '(transacción)';
+      } else {
+        label = '(item)';
+      }
+    }
+    const text = prompt('Sugerencia para: ' + label);
     if (!text || !text.trim()) return;
     const { error } = await _client.from('messages').insert({
       from_profile: _profile,
