@@ -1592,6 +1592,20 @@ canvas { max-width: 100%; }
 }
 .chat-fab:hover  { transform: scale(1.08); }
 .chat-fab:active { transform: scale(0.96); }
+.chat-fab.has-unread {
+  background: linear-gradient(135deg, #EC4899, #F59E0B);
+  animation: chatPulse 1.6s ease-in-out infinite;
+}
+@keyframes chatPulse {
+  0%, 100% {
+    box-shadow: 0 8px 24px rgba(236,72,153,0.55),
+                0 0 0 0 rgba(236,72,153,0.55);
+  }
+  50% {
+    box-shadow: 0 8px 24px rgba(236,72,153,0.85),
+                0 0 0 14px rgba(236,72,153,0.0);
+  }
+}
 .chat-badge {
   position: absolute; top: -4px; right: -4px;
   min-width: 20px; height: 20px; padding: 0 6px;

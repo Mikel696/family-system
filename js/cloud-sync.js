@@ -257,7 +257,7 @@ const Cloud = (() => {
 
   /* =================== STATE.set INTERCEPTOR =================== */
   const _origSet = State.set.bind(State);
-  const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','drive_last_error','current_user','auth_users','auth_session'];
+  const _SKIP = ['drive_connected','drive_client_id','drive_last_sync','drive_last_error','current_user','auth_users','auth_session','chat_last_read'];
 
   function _scheduleDocPush(docId) {
     clearTimeout(_pushTimers[docId]);

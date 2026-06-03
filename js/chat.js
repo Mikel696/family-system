@@ -26,6 +26,13 @@ const Chat = (() => {
       .limit(200);
     if (error) { console.warn('chat history', error); return; }
     _messages = data || [];
+    // Cuenta mensajes del otro perfil que llegaron después del último que vi
+    const lastRead = State.get('chat_last_read', 0);
+    _unread = _messages.filter(m =>
+      m.from_profile !== _profile &&
+      new Date(m.created_at).getTime() > lastRead
+    ).length;
+    _updateBadge();
     _renderMessages();
   }
 
@@ -80,9 +87,12 @@ const Chat = (() => {
 
   function _updateBadge() {
     const b = document.getElementById('chatBadge');
-    if (!b) return;
-    b.textContent = _unread;
-    b.style.display = _unread > 0 ? 'flex' : 'none';
+    if (b) {
+      b.textContent = _unread > 99 ? '99+' : _unread;
+      b.style.display = _unread > 0 ? 'flex' : 'none';
+    }
+    const fab = document.getElementById('chatFab');
+    if (fab) fab.classList.toggle('has-unread', _unread > 0);
   }
 
   function open() {
@@ -92,6 +102,11 @@ const Chat = (() => {
     _unread = 0;
     _updateBadge();
     _renderMessages();
+    // Marcar todo como leído hasta este momento (timestamp del último mensaje o ahora)
+    const latest = _messages.length
+      ? new Date(_messages[_messages.length - 1].created_at).getTime()
+      : Date.now();
+    State.set('chat_last_read', latest);
     setTimeout(() => document.getElementById('chatInput')?.focus(), 100);
   }
 
