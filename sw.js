@@ -1,4 +1,4 @@
-const CACHE   = 'family-system-v26';
+const CACHE   = 'stoic-v27';
 const ASSETS  = [
   './',
   './index.html',
@@ -11,7 +11,7 @@ const ASSETS  = [
   './js/auth.js',
   './js/alerts.js',
   './js/cloud-sync.js',
-  './js/chat.js',
+  './js/stoic.js',
   './js/dashboard.js',
   './js/transactions.js',
   './js/savings.js',
@@ -69,7 +69,7 @@ self.addEventListener('fetch', e => {
 
 // Push notification handler
 self.addEventListener('push', e => {
-  const data = e.data?.json() || { title: 'Family System', body: 'Nueva alerta' };
+  const data = e.data?.json() || { title: 'Stoic 🏛️', body: 'Nueva alerta' };
   e.waitUntil(
     self.registration.showNotification(data.title, {
       body:  data.body,

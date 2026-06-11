@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-  <meta name="theme-color" content="#0A0A14">
+  <meta name="theme-color" content="#C9A961">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Family System">
-  <meta name="application-name" content="Family System">
-  <title>Family System 💜</title>
+  <meta name="apple-mobile-web-app-title" content="Stoic">
+  <meta name="application-name" content="Stoic">
+  <title>Stoic 🏛️ · Disciplina</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/icon-512.png">
@@ -31,10 +31,10 @@
   <!-- SIDEBAR (desktop) -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
-      <span class="logo-icon">💜</span>
+      <span class="logo-icon">🏛️</span>
       <div class="logo-text">
-        <span class="logo-title">Family System</span>
-        <span class="logo-sub">Hogar Financiero</span>
+        <span class="logo-title">Stoic</span>
+        <span class="logo-sub">Disciplina · Crecimiento</span>
       </div>
     </div>
 
@@ -75,18 +75,10 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="user-switcher">
-        <button class="user-btn active" data-user="karen" onclick="App.switchUser('karen')" title="Karen">
-          <span class="user-avatar">👩</span>
-          <span class="user-name">Karen</span>
-        </button>
-        <button class="user-btn" data-user="miguel" onclick="App.switchUser('miguel')" title="Miguel">
-          <span class="user-avatar">👨</span>
+      <div class="user-switcher single">
+        <button class="user-btn active" data-user="miguel" onclick="App.switchUser('miguel')" title="Miguel">
+          <span class="user-avatar">🏛️</span>
           <span class="user-name">Miguel</span>
-        </button>
-        <button class="user-btn" data-user="shared" onclick="App.switchUser('shared')" title="Hogar">
-          <span class="user-avatar">🏠</span>
-          <span class="user-name">Hogar</span>
         </button>
       </div>
     </div>
@@ -111,8 +103,8 @@
         </div>
         <button class="btn-icon" onclick="App.showQuickAdd()" title="Agregar rápido">➕</button>
         <div class="topbar-user" onclick="App.showUserMenu()">
-          <span id="topbarUserAvatar">👩</span>
-          <span id="topbarUserName">Karen</span>
+          <span id="topbarUserAvatar">🏛️</span>
+          <span id="topbarUserName">Miguel</span>
         </div>
       </div>
     </header>
@@ -123,7 +115,7 @@
       <!-- DASHBOARD -->
       <section id="sec-dashboard" class="section active">
         <div class="section-header">
-          <h2>Panel Principal</h2>
+          <h2>🏛️ Camino del Estoico</h2>
           <div class="header-actions">
             <select id="dashPeriod" onchange="Dashboard.render()" class="select-sm">
               <option value="month">Este mes</option>
@@ -179,9 +171,8 @@
           <select id="txCategory" onchange="Transactions.filter()" class="select-sm">
             <option value="">Categoría</option>
           </select>
-          <select id="txPerson" onchange="Transactions.filter()" class="select-sm">
+          <select id="txPerson" onchange="Transactions.filter()" class="select-sm" style="display:none">
             <option value="">Todas</option>
-            <option value="karen">Solo Karen</option>
             <option value="miguel">Solo Miguel</option>
           </select>
           <input type="month" id="txMonth" onchange="Transactions.filter()" class="input-month">
@@ -303,10 +294,6 @@
             <canvas id="reportSavings" height="200"></canvas>
           </div>
           <div class="card">
-            <div class="card-header"><h3>Karen vs Miguel</h3></div>
-            <canvas id="reportPersons" height="250"></canvas>
-          </div>
-          <div class="card">
             <div class="card-header"><h3>Patrimonio Neto</h3></div>
             <canvas id="reportNetWorth" height="250"></canvas>
           </div>
@@ -405,7 +392,7 @@
 <script src="js/auth.js"></script>
 <script src="js/alerts.js"></script>
 <script src="js/cloud-sync.js"></script>
-<script src="js/chat.js"></script>
+<script src="js/stoic.js"></script>
 <script src="js/dashboard.js"></script>
 <script src="js/transactions.js"></script>
 <script src="js/savings.js"></script>

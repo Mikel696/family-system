@@ -1,7 +1,7 @@
 /* App — Shell, Navigation, Modal, Toast */
 const App = (() => {
   let currentSection = 'dashboard';
-  let currentUser    = 'shared';
+  let currentUser    = 'miguel';
   let _modalCloseCallback = null;
 
   const SECTION_TITLES = {
@@ -226,21 +226,16 @@ const App = (() => {
 
   function showUserMenu() {
     const settings = State.getSettings();
-    const profiles = settings.profiles;
-    openModal('Cambiar Usuario', `
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${['karen','miguel','shared'].map(u => {
-          const p = profiles[u] || { avatar: u==='shared'?'🏠':'👤', name: u };
-          return `<button class="profile-row" onclick="App.switchUser('${u}');App.closeModal()" style="cursor:pointer">
-            <span class="profile-avatar">${p.avatar}</span>
-            <div class="profile-info">
-              <div class="profile-name">${Utils.escHtml(p.name || u)}</div>
-              <div class="profile-role">${u === 'shared' ? 'Vista compartida' : u === 'karen' ? 'Perfil Karen' : 'Perfil Miguel'}</div>
-            </div>
-            ${currentUser === u ? '<span style="color:var(--success)">✓</span>' : ''}
-          </button>`;
-        }).join('')}
+    const p = (settings.profiles || {}).miguel || { avatar: '🏛️', name: 'Miguel' };
+    openModal('Mi perfil', `
+      <div class="profile-row" style="cursor:default">
+        <span class="profile-avatar">${p.avatar}</span>
+        <div class="profile-info">
+          <div class="profile-name">${Utils.escHtml(p.name || 'Miguel')}</div>
+          <div class="profile-role">Disciplina · Estudio · Ahorro</div>
+        </div>
       </div>
+      <p style="font-size:12px;color:var(--text-m);margin:12px 0;text-align:center">"${(typeof Stoic!=='undefined'?Stoic.today().t:'Disciplina hoy. Libertad mañana.')}"</p>
       <button class="btn-outline" style="width:100%;margin-top:14px" onclick="App.closeModal();Auth.logout()">🔒 Cerrar sesión</button>`);
   }
 

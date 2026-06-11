@@ -132,8 +132,7 @@ const State = (() => {
       theme: 'dark',
       notifications: true,
       profiles: {
-        karen:  { name: 'Karen',  avatar: '👩', color: '#EC4899' },
-        miguel: { name: 'Miguel', avatar: '👨', color: '#3B82F6' }
+        miguel: { name: 'Miguel', avatar: '🏛️', color: '#C9A961' }
       }
     });
   }

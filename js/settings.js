@@ -11,33 +11,24 @@ const Settings = (() => {
   function _renderProfiles() {
     const s = State.getSettings();
     const profiles = s.profiles || {};
+    const u = 'miguel';
+    const p = profiles[u] || { name: 'Miguel', avatar: '🏛️', color: '#C9A961' };
     document.getElementById('settingsProfiles').innerHTML = `
       <div class="profile-editor">
-        ${['karen','miguel'].map(u => {
-          const p = profiles[u] || { name: u, avatar: u==='karen'?'👩':'👨', color: '#8B5CF6' };
-          return `
-            <div class="profile-row">
-              <div style="font-size:36px;cursor:pointer" onclick="Settings._editAvatar('${u}')" title="Cambiar emoji">${p.avatar}</div>
-              <div class="profile-info">
-                <div class="profile-name">
-                  <input type="text" class="form-input" value="${Utils.escHtml(p.name)}" id="pName-${u}" placeholder="Nombre" style="max-width:180px" oninput="Settings._saveName('${u}',this.value)">
-                </div>
-                <div class="profile-role">${u === 'karen' ? 'Perfil Karen' : 'Perfil Miguel'}</div>
-              </div>
-            </div>`;
-        }).join('')}
-        <div class="profile-row" style="opacity:0.7">
-          <div style="font-size:36px">🏠</div>
+        <div class="profile-row">
+          <div style="font-size:36px;cursor:pointer" onclick="Settings._editAvatar('${u}')" title="Cambiar emoji">${p.avatar}</div>
           <div class="profile-info">
-            <div class="profile-name fw-700">Hogar</div>
-            <div class="profile-role">Vista compartida</div>
+            <div class="profile-name">
+              <input type="text" class="form-input" value="${Utils.escHtml(p.name)}" id="pName-${u}" placeholder="Nombre" style="max-width:180px" oninput="Settings._saveName('${u}',this.value)">
+            </div>
+            <div class="profile-role">Disciplina · Estudio · Ahorro</div>
           </div>
         </div>
       </div>`;
   }
 
   function _editAvatar(user) {
-    const emojis = ['👩','👨','👱‍♀️','👱','🧑','👩‍💼','👨‍💼','👩‍🎓','👨‍🎓','👸','🤴','🦸‍♀️','🦸‍♂️','🧝‍♀️','🧝‍♂️'];
+    const emojis = ['🏛️','⚔️','🦅','🔥','🛡️','🏺','📜','🗡️','👨','🧑','👨‍💼','👨‍🎓','🤴','🦸‍♂️','🧝‍♂️','⚡','🌄','🏔️'];
     App.openModal(`Cambiar Avatar — ${user}`, `
       <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">
         ${emojis.map(e=>`<button style="font-size:36px;padding:8px;border-radius:12px;border:2px solid var(--border);background:var(--bg3);cursor:pointer" onclick="Settings._saveAvatar('${user}','${e}');App.closeModal()">${e}</button>`).join('')}

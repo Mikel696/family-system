@@ -6,8 +6,7 @@ const Auth = (() => {
   const SUPABASE_URL  = 'https://swbbvtcbnycrvzryzndy.supabase.co';
   const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN3YmJ2dGNibnljcnZ6cnl6bmR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDE5OTQsImV4cCI6MjA5NjAxNzk5NH0.970qYgcbeavU0MjM3UCyn8pjsBShstDrEpx6u3LgsN8';
   const PROFILES = {
-    miguel: { label: 'Miguel', avatar: '👨', email: 'miguel@family.local' },
-    karen:  { label: 'Karen',  avatar: '👩', email: 'karen@family.local' }
+    miguel: { label: 'Miguel', avatar: '🏛️', email: 'miguel@family.local' }
   };
   const MIN_LEN = 4;
   let _selected        = null;
@@ -55,7 +54,7 @@ const Auth = (() => {
     if (!window.__appStarted) { window.__appStarted = true; App.init(); }
     if (typeof App !== 'undefined') App.switchUser(profile);
     if (typeof Cloud !== 'undefined') Cloud.init(_client);
-    if (typeof Chat  !== 'undefined') Chat.init(_client, profile);
+    // Chat (entre perfiles) ya no aplica en modo personal
   }
 
   async function logout() {
@@ -68,10 +67,16 @@ const Auth = (() => {
 
   function _renderPicker() {
     _selected = null;
+    // Modo personal: solo Miguel → entrar directo al prompt de contraseña
+    const keys = Object.keys(PROFILES);
+    if (keys.length === 1) {
+      _screen().style.display = 'flex';
+      return pick(keys[0]);
+    }
     _screen().innerHTML = `
       <div class="login-box">
-        <div class="login-logo">💜</div>
-        <h1 class="login-title">Family System</h1>
+        <div class="login-logo">🏛️</div>
+        <h1 class="login-title">Stoic</h1>
         <p class="login-sub">Selecciona tu perfil</p>
         <div class="login-profiles">
           ${Object.entries(PROFILES).map(([key, u]) => `
@@ -80,7 +85,7 @@ const Auth = (() => {
               <span class="login-profile-name">${u.label}</span>
             </button>`).join('')}
         </div>
-        <p class="login-foot">🔐 Acceso seguro · autenticación real</p>
+        <p class="login-foot">🔐 Disciplina y crecimiento personal</p>
       </div>`;
     _screen().style.display = 'flex';
   }
@@ -89,16 +94,18 @@ const Auth = (() => {
     _selected = profile;
     const p = PROFILES[profile];
     if (!p) return;
+    const showBack = Object.keys(PROFILES).length > 1;
     _screen().innerHTML = `
       <div class="login-box">
         <div class="login-logo">${p.avatar}</div>
         <h1 class="login-title">Hola, ${p.label}</h1>
+        <p class="login-sub">Disciplina · Estudio · Ahorro</p>
         <input type="password" id="loginPass" class="login-input" placeholder="Tu contraseña" autocomplete="current-password"
           onkeydown="if(event.key==='Enter')Auth.submit()">
         <div class="login-err" id="loginErr"></div>
         <button class="login-btn" onclick="Auth.submit()">Entrar</button>
         <p class="login-hint">Primera vez en cualquier dispositivo: la contraseña que escribas será la tuya (mínimo ${MIN_LEN} caracteres).</p>
-        <button class="login-back" onclick="Auth._renderPicker()">← Cambiar de perfil</button>
+        ${showBack ? '<button class="login-back" onclick="Auth._renderPicker()">← Cambiar de perfil</button>' : ''}
       </div>`;
     setTimeout(() => { const i = document.getElementById('loginPass'); if (i) i.focus(); }, 120);
   }

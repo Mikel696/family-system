@@ -61,36 +61,44 @@ const Dashboard = (() => {
 
     el.innerHTML = `
       <div class="person-stats-wrap">
-        ${row('karen')}
         ${row('miguel')}
       </div>`;
   }
 
   function _renderHero() {
-    const existing = document.getElementById('familyHero');
-    if (existing) return; // only inject once
-    const settings  = State.getSettings();
-    const profiles  = settings.profiles || {};
-    const karenName = profiles.karen?.name  || 'Karen';
+    let hero = document.getElementById('familyHero');
+    const settings   = State.getSettings();
+    const profiles   = settings.profiles || {};
     const miguelName = profiles.miguel?.name || 'Miguel';
     const now   = new Date();
     const hora  = now.getHours();
     const saludo = hora < 12 ? 'Buenos días' : hora < 18 ? 'Buenas tardes' : 'Buenas noches';
     const fechaStr = now.toLocaleDateString('es-CO', { weekday:'long', day:'numeric', month:'long' });
+    const quote = (typeof Stoic !== 'undefined') ? Stoic.today() : { t: 'Disciplina hoy. Libertad mañana.', a: 'Vir Stoicus' };
 
-    const hero = document.createElement('div');
-    hero.id = 'familyHero';
-    hero.className = 'family-hero';
+    if (!hero) {
+      hero = document.createElement('div');
+      hero.id = 'familyHero';
+      hero.className = 'stoic-hero';
+      const sec = document.getElementById('sec-dashboard');
+      const header = sec?.querySelector('.section-header');
+      if (header) sec.insertBefore(hero, header.nextSibling);
+    } else {
+      hero.className = 'stoic-hero';
+    }
     hero.innerHTML = `
-      <div class="family-hero-overlay"></div>
-      <div class="family-hero-date">${fechaStr.replace(/^\w/, c => c.toUpperCase())}</div>
-      <div class="family-hero-content">
-        <div class="family-hero-greeting">${saludo}, ${karenName} & ${miguelName} 💜</div>
-        <div class="family-hero-sub">Tu hogar financiero digital · Family System</div>
+      <div class="stoic-hero-overlay"></div>
+      <div class="stoic-hero-date">${fechaStr.replace(/^\w/, c => c.toUpperCase())}</div>
+      <div class="stoic-hero-content">
+        <div class="stoic-hero-icon">🏛️</div>
+        <div class="stoic-hero-greeting">${saludo}, ${miguelName}</div>
+        <div class="stoic-hero-sub">Disciplina · Estudio · Ahorro</div>
+        <div class="stoic-hero-quote">
+          <span class="quote-mark">"</span>
+          <span class="quote-text">${quote.t}</span>
+          <small class="quote-author">— ${quote.a}</small>
+        </div>
       </div>`;
-    const sec = document.getElementById('sec-dashboard');
-    const header = sec?.querySelector('.section-header');
-    if (header) sec.insertBefore(hero, header.nextSibling);
   }
 
   function _filterByPeriod(txs, period) {
