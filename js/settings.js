@@ -188,7 +188,53 @@ const Settings = (() => {
         <button class="btn-outline" onclick="Reports.exportCSV()">📊 Exportar CSV</button>
         <button class="btn-danger" onclick="Settings.clearData()">🗑️ Limpiar Datos</button>
       </div>
+      <div style="margin-top:18px;padding:14px;border:1px dashed var(--primary);border-radius:12px;background:rgba(201,169,97,0.06)">
+        <div style="font-weight:700;color:var(--primary-l);margin-bottom:6px">🏛️ Mantenimiento estoico</div>
+        <div style="font-size:12px;color:var(--text-m);margin-bottom:10px">Eliminar registros antiguos de Karen (transacciones, ahorros, deudas, notas y servicios) en este dispositivo y en la nube. Lo tuyo se conserva intacto.</div>
+        <button class="btn-danger" onclick="Settings.purgeKarenData()">🧹 Limpiar registros antiguos de Karen</button>
+      </div>
       <input type="file" id="importFileInput" style="display:none" accept=".json" onchange="Settings._doImport(this.files[0])">`;
+  }
+
+  function purgeKarenData() {
+    const ok = confirm('⚠️ Esto eliminará TODOS los registros que tengan a Karen (transacciones, ahorros, deudas, notas, servicios y tareas) — local y en la nube — y se propagará a todos tus dispositivos.\n\nLos registros tuyos NO se tocan.\n\n¿Continuar?');
+    if (!ok) return;
+
+    const report = { transactions:0, savings:0, debts:0, notes:0, payment_services:0, tasklists:0 };
+
+    // Transacciones
+    State.getTransactions().filter(t => t && t.person === 'karen').forEach(t => {
+      State.deleteTransaction(t.id); report.transactions++;
+    });
+    // Ahorros
+    State.getSavings().filter(s => s && s.person === 'karen').forEach(s => {
+      State.deleteSaving(s.id); report.savings++;
+    });
+    // Deudas
+    State.getDebts().filter(d => d && d.person === 'karen').forEach(d => {
+      State.deleteDebt(d.id); report.debts++;
+    });
+    // Notas
+    State.getNotes().filter(n => n && n.person === 'karen').forEach(n => {
+      State.deleteNote(n.id); report.notes++;
+    });
+    // Servicios de pago
+    (State.getPaymentServices ? State.getPaymentServices() : []).filter(p => p && p.person === 'karen').forEach(p => {
+      State.deletePaymentService(p.id); report.payment_services++;
+    });
+    // Listas de tareas
+    State.getTaskLists().filter(l => l && l.person === 'karen').forEach(l => {
+      State.deleteTaskList(l.id); report.tasklists++;
+    });
+
+    const total = Object.values(report).reduce((a,b)=>a+b,0);
+    console.table(report);
+    const detail = Object.entries(report).map(([k,v]) => `• ${k}: ${v}`).join('\n');
+    alert(`✅ Limpieza completa.\n\nTotal eliminados: ${total}\n${detail}\n\nLa nube replicará el cambio a tus demás dispositivos en segundos.`);
+
+    if (typeof Dashboard !== 'undefined') Dashboard.render();
+    if (typeof Transactions !== 'undefined' && Transactions.render) Transactions.render();
+    render();
   }
 
   function exportData() {
@@ -246,5 +292,5 @@ const Settings = (() => {
     Dashboard.render();
   }
 
-  return { render, exportData, importData, _doImport, clearData, _editAvatar, _saveAvatar, _saveName, _saveCurrency, _saveCurrSym, _saveNotif, _saveNotifDays, _testNotif, _saveTheme, _renderDriveSync };
+  return { render, exportData, importData, _doImport, clearData, purgeKarenData, _editAvatar, _saveAvatar, _saveName, _saveCurrency, _saveCurrSym, _saveNotif, _saveNotifDays, _testNotif, _saveTheme, _renderDriveSync };
 })();

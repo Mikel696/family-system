@@ -1,4 +1,4 @@
-const CACHE   = 'stoic-v27';
+const CACHE   = 'stoic-v28';
 const ASSETS  = [
   './',
   './index.html',
